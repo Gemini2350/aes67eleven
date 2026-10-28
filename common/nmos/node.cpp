@@ -268,7 +268,9 @@ namespace
     }
     void MergeAssetTags(json& jsTags)
     {
-        for(auto& [sKey, jsValue] : AssetTags().items()) { jsTags[sKey] = jsValue; }
+        //items() on a temporary dangles - keep the json alive for the loop
+        auto jsAsset = AssetTags();
+        for(auto& [sKey, jsValue] : jsAsset.items()) { jsTags[sKey] = jsValue; }
     }
 }
 
