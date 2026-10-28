@@ -11,6 +11,18 @@ if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
 endif()
 
 if(APPLE)
+# libaspl probes the sysroot itself and warns when cmake has not set one -
+# resolve it once via xcrun so the probe is never needed
+if(NOT CMAKE_OSX_SYSROOT)
+    execute_process(COMMAND xcrun --show-sdk-path
+                    OUTPUT_VARIABLE _macos_sdk OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(_macos_sdk)
+        set(CMAKE_OSX_SYSROOT "${_macos_sdk}" CACHE PATH "macOS SDK" FORCE)
+    endif()
+endif()
+# libaspl (pinned commit) calls add_custom_command without PRE/POST_BUILD -
+# default the new CMP0175 check to the old behaviour for the subproject
+set(CMAKE_POLICY_DEFAULT_CMP0175 OLD)
 include(FetchContent)
 FetchContent_Declare(libASPL
     GIT_REPOSITORY https://github.com/gavv/libASPL.git
