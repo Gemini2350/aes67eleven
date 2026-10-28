@@ -1,0 +1,21 @@
+services:
+  aes67eleven:
+    image: gemini2350/aes67eleven-gw:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: aes67eleven-gw
+    # host networking is mandatory: multicast rtp/ptp, igmp joins and
+    # dns-sd discovery do not cross the docker bridge nat
+    network_mode: host
+    cap_add:
+      - SYS_NICE          # SCHED_FIFO for the rtp pacing threads
+    ulimits:
+      rtprio: 95
+      memlock: -1
+    volumes:
+      - aes67-data:/data
+    restart: unless-stopped
+
+volumes:
+  aes67-data:

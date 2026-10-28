@@ -1,0 +1,24 @@
+{
+    "device": {
+        "label": "AES67eleven-GW",
+        "description": "AES67eleven gateway (docker)",
+        "uuid_seed": "aes67eleven-gw-1"
+    },
+    "network": {
+        "interface_primary": "eth0",
+        "interface_secondary": ""
+    },
+    "ptp": {
+        "domain": 0,
+        "domain_auto": true
+    },
+    "nmos": {
+        "http_port": 8081,
+        "registry_override": ""
+    },
+    "web": {
+        "port": 8180,
+        "webui_path": "/usr/local/share/aes67-vsc/webui",
+        "audio_files_path": "/data/audio-files"
+    }
+}

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2534"/>
+      <stop offset="1" stop-color="#0d121b"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#1d9e56"/>
+      <stop offset="0.72" stop-color="#2ecc71"/>
+      <stop offset="0.78" stop-color="#f1c40f"/>
+      <stop offset="1" stop-color="#f1c40f"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <path d="M 18 96 C 28 84, 36 84, 46 96 S 64 108, 74 96 S 92 84, 110 96"
+        fill="none" stroke="#4da3ff" stroke-width="4" stroke-linecap="round" opacity="0.85"/>
+  <!-- the "11": two led meter bars -->
+  <g>
+    <rect x="42" y="28" width="16" height="56" rx="6" fill="url(#bar)"/>
+    <rect x="70" y="16" width="16" height="68" rx="6" fill="url(#bar)"/>
+    <!-- led gaps -->
+    <g fill="#0d121b" opacity="0.9">
+      <rect x="40" y="44" width="20" height="4"/>
+      <rect x="40" y="58" width="20" height="4"/>
+      <rect x="40" y="72" width="20" height="4"/>
+      <rect x="68" y="32" width="20" height="4"/>
+      <rect x="68" y="44" width="20" height="4"/>
+      <rect x="68" y="58" width="20" height="4"/>
+      <rect x="68" y="72" width="20" height="4"/>
+    </g>
+  </g>
+</svg>

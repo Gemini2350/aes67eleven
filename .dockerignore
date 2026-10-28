@@ -1,0 +1,4 @@
+build/
+.git/
+*.app
+docker/docker-compose.yml

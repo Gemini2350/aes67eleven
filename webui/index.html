@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="google" content="notranslate">
+<title>AES67eleven</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav id="nav">
+    <div class="brand"><img src="logo.svg" alt="" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px"><span class="dot" id="conn-dot"></span> AES67eleven</div>
+    <button class="tab active" data-page="dashboard">Overview</button>
+    <button class="tab" data-page="receiver">Receiver</button>
+    <button class="tab" data-page="sender">Sender</button>
+    <button class="tab" data-page="matrix">Matrix</button>
+    <button class="tab" data-page="player">Player</button>
+    <button class="tab" data-page="ptp">PTP</button>
+    <button class="tab" data-page="settings">Setup</button>
+</nav>
+
+<main>
+<!-- ================= DASHBOARD ================= -->
+<section id="page-dashboard" class="page active">
+    <div class="grid">
+        <div class="card">
+            <h2>PTP <span class="pill" id="d-ptp-state">–</span></h2>
+            <div class="big" id="d-ptp-gm">–</div>
+            <div class="sub">Grandmaster · correction <span id="d-ptp-offset">–</span></div>
+        </div>
+        <div class="card">
+            <h2>NMOS</h2>
+            <div class="big small" id="d-nmos-registry">–</div>
+            <div class="sub" id="d-nmos-status">–</div>
+        </div>
+        <div class="card wide">
+            <h2>Streams</h2>
+            <div id="d-streams" style="text-transform:none"></div>
+        </div>
+        <div class="card wide">
+            <h2>Receiver <span class="sub">(network → apps · device channels 1–64)</span></h2>
+            <div id="bank-in" class="bank"></div>
+        </div>
+        <div class="card wide">
+            <h2>Transmitter <span class="sub">(apps → network · device channels 1–64)</span></h2>
+            <div id="bank-out" class="bank"></div>
+        </div>
+    </div>
+</section>
+
+<!-- ================= RECEIVER ================= -->
+<section id="page-receiver" class="page">
+    <div class="row seg" id="rx-select" style="margin-bottom:10px"></div>
+    <div class="grid">
+        <div class="card wide">
+            <h2>Status <span class="pill" id="rx-overall">–</span>
+                <span class="sub" id="rx-mini" style="text-transform:none">–</span></h2>
+            <div id="rx-meters" class="bank small"></div>
+            <canvas id="rx-buffer-chart" height="56"></canvas>
+        </div>
+        <div class="card wide">
+            <h2>Patch <span class="sub">(receiver → device channels · click to change, digit = stream channel)</span></h2>
+            <div id="rx-patch" class="mx"></div>
+        </div>
+        <div class="card wide">
+            <h2>NMOS senders
+                <input id="rx-filter" placeholder="Filter…" size="16" class="right">
+                <button class="btn" id="rx-browse">Refresh</button>
+            </h2>
+            <div id="rx-senders" class="sub">–</div>
+        </div>
+        <div class="card wide">
+            <h2>Manual (SDP) <span class="sub">fallback without NMOS</span></h2>
+            <textarea id="rx-sdp" placeholder="Paste SDP here (a=group:DUP supported)…" rows="4"></textarea>
+            <div class="row">
+                <button class="btn primary" id="rx-connect">Connect</button>
+                <button class="btn" id="rx-disconnect">Disconnect</button>
+                <label class="inline">Gain <input type="range" id="rx-gain" min="-40" max="12" step="1" value="0">
+                    <span id="rx-gain-val">0 dB</span></label>
+                <button class="btn" id="rx-monitor" title="Listen to this receiver locally (device: monitor.device)">Monitor: off</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ================= MATRIX ================= -->
+<section id="page-matrix" class="page">
+    <div class="grid">
+        <div class="card wide">
+            <h2>TX matrix <span class="sub">(device channel → transmitter · click to assign/remove, digit = stream channel)</span></h2>
+            <div id="mx-tx" class="mx"></div>
+        </div>
+        <div class="card wide">
+            <h2>RX matrix <span class="sub">(receiver → device channel)</span></h2>
+            <div id="mx-rx" class="mx"></div>
+        </div>
+    </div>
+</section>
+
+<!-- ================= PLAYER ================= -->
+<section id="page-player" class="page">
+    <div class="grid">
+        <div class="card wide">
+            <h2>Audio files <span class="sub">(WAV / MP3 · decoded to 48 kHz on load · played onto the device channels, so any transmitter can send them)</span></h2>
+            <div class="row">
+                <input type="file" id="pl-upload" accept=".wav,.mp3">
+                <span id="pl-upload-info" class="sub"></span>
+            </div>
+        </div>
+        <div id="pl-decks" class="wide"></div>
+    </div>
+</section>
+
+<!-- ================= SENDER ================= -->
+<section id="page-sender" class="page">
+    <div class="row seg" id="tx-select" style="margin-bottom:10px"></div>
+    <div class="grid">
+        <div class="card wide">
+            <h2>Status <span class="pill" id="tx-state">–</span>
+                <span class="sub" id="tx-mini" style="text-transform:none">–</span></h2>
+            <div id="tx-meters" class="bank small"></div>
+            <div class="row">
+                <label class="inline">Name <input id="tx-label" size="24" placeholder="label shown in NMOS and SDP"></label>
+                <button class="btn primary" id="tx-start">Start</button>
+                <button class="btn" id="tx-stop">Stop</button>
+            </div>
+        </div>
+        <div class="card wide">
+            <h2>Inputs <span class="sub">(device channels → this transmitter · click to change, digit = stream channel)</span></h2>
+            <div id="tx-patch" class="mx"></div>
+        </div>
+        <div class="card">
+            <h2>Transport</h2>
+            <table class="kv">
+                <tr><td>Multicast 1</td><td><input id="tx-mc1" size="14"></td></tr>
+                <tr><td>Multicast 2</td><td><input id="tx-mc2" size="14"></td></tr>
+                <tr><td>Port</td><td><input id="tx-port" size="6"></td></tr>
+                <tr><td>Leg 1 RTP</td><td><label class="switch"><input type="checkbox" id="tx-leg1"><span></span></label></td></tr>
+                <tr><td>Leg 2 RTP</td><td><label class="switch"><input type="checkbox" id="tx-leg2"><span></span></label></td></tr>
+            </table>
+            <div class="row">
+                <button class="btn primary" id="tx-apply">Apply</button>
+                <span class="sub" id="tx-apply-info" style="text-transform:none">restarts this transmitter with the new destination</span>
+            </div>
+            <div class="sub">Leg 2 is sent whenever a second interface is configured</div>
+        </div>
+        <div class="card wide">
+            <h2>SDP
+                <button class="btn right" id="tx-show-sdp">Show SDP</button>
+                <button class="btn" id="tx-copy-sdp" style="display:none">Copy</button>
+            </h2>
+            <pre id="tx-sdp" class="sdp" style="display:none"></pre>
+        </div>
+    </div>
+</section>
+
+<!-- ================= PTP ================= -->
+<section id="page-ptp" class="page">
+    <div class="grid">
+        <div class="card wide">
+            <h2>Analyzer <span class="pill" id="ptp-state">–</span>
+                <label class="inline right"><input type="checkbox" id="ptp-domain-auto"> Auto</label>
+                <label class="inline right">Domain <input type="number" id="ptp-domain" min="0" max="127" style="width:5.5em"></label>
+            </h2>
+            <div class="big small" id="ptp-time">–</div>
+            <div class="sub">Own identity: <span id="ptp-identity">–</span> · domain <span id="ptp-active-domain">–</span> · correction <span id="ptp-offset">–</span> · path delay <span id="ptp-delay">–</span></div>
+            <div class="sub" id="ptp-meta" style="display:none"></div>
+            <table class="masters" id="ptp-masters">
+                <thead><tr>
+                    <th>BMCA</th><th>Source</th><th>Grandmaster</th><th>P1</th><th>Class</th><th>Acc</th><th>Var</th><th>P2</th><th>Steps</th><th>Ann</th><th>Net</th><th>Decision</th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="card wide">
+            <h2>Correction history <span class="sub">(ns, around the mean)</span></h2>
+            <canvas id="ptp-chart" height="120"></canvas>
+        </div>
+    </div>
+</section>
+
+<!-- ================= SETTINGS ================= -->
+<section id="page-settings" class="page">
+    <div class="grid">
+        <div class="card wide">
+            <h2>Interfaces</h2>
+            <div id="net-ifs" class="sub">loading…</div>
+            <div class="sub">Amber = primary leg · Blue = secondary leg. Addresses are managed in
+                macOS System Settings.</div>
+        </div>
+        <div class="card">
+            <h2>Device</h2>
+            <table class="kv">
+                <tr><td>Label</td><td><input id="set-label"></td></tr>
+                <tr><td>Interface 1 <span class="sub">amber</span></td><td><select id="set-if1"></select></td></tr>
+                <tr><td>Interface 2 <span class="sub">blue</span></td><td><select id="set-if2"></select></td></tr>
+                <tr><td>Playout delay</td><td><input id="set-delay" size="4"> ms</td></tr>
+            </table>
+        </div>
+        <div class="card">
+            <h2>NMOS <span class="pill" id="set-nmos-pill">–</span></h2>
+            <table class="kv">
+                <tr><td>Registry</td><td>
+                    <select id="set-reg-scheme"><option value="http">http</option><option value="https">https</option></select>
+                    <input id="set-reg-host" size="15" placeholder="registrar1.office.int">
+                    <input id="set-reg-port" size="5" placeholder="8010">
+                </td></tr>
+                <tr><td>Node API port</td><td><input id="set-nmos-port" size="6"></td></tr>
+            </table>
+            <div class="sub" style="text-transform:none">Registry host empty = automatic discovery (unicast DNS-SD).
+                Example: http · registrar1.office.int · 8010</div>
+            <div class="sub" id="set-nmos-status" style="text-transform:none">–</div>
+            <div class="sub" id="set-version">–</div>
+        </div>
+        <div class="card">
+            <h2>&nbsp;</h2>
+            <button class="btn primary" id="set-save">Save &amp; apply</button>
+            <div class="sub" id="set-save-info" style="text-transform:none">Interface/registry/port changes restart the service automatically</div>
+        </div>
+    </div>
+</section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.aes67vsc.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/AES67eleven.app/Contents/MacOS/aes67vsc-daemon</string>
+        <string>__HOME__/Library/Application Support/aes67-vsc/config.json</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <!-- restart after crashes, but stay quit when the user picks
+             "Beenden" in the menu bar (clean exit 0) -->
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/aes67-vsc/daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/aes67-vsc/daemon.log</string>
+</dict>
+</plist>
