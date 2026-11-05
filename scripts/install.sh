@@ -40,6 +40,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp launchd/DaemonApp-Info.plist "$APP/Contents/Info.plist"
 cp build/aes67vsc-daemon "$APP/Contents/MacOS/"
 cp build/icons/AppIcon.icns build/icons/MenuIcon.png build/icons/MenuIcon@2x.png "$APP/Contents/Resources/"
+# copied resources may carry finder/provenance xattrs - codesign refuses the
+# bundle with "resource fork ... detritus not allowed" unless they are gone
+xattr -cr "$APP" 2>/dev/null || true
 codesign --force -s "$SIGN_ID" --identifier com.aes67vsc.daemon "$APP"
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
