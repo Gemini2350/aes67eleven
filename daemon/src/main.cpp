@@ -224,6 +224,19 @@ int main(int argc, char** argv)
             (void)!system("open http://localhost:8180");
             return 0;
         }
+#ifdef __APPLE__
+        if(argc == 1)
+        {
+            //finder double-click (no args, nothing running): since macos 27 a
+            //LaunchServices-started process never gets its status item scene
+            //granted (appkit retries forever, no icon). hand over to launchd -
+            //the agent context works - then open the ui and bow out.
+            (void)!system("launchctl bootstrap gui/$(id -u) \"$HOME/Library/LaunchAgents/com.aes67vsc.daemon.plist\" 2>/dev/null;"
+                          " launchctl kickstart gui/$(id -u)/com.aes67vsc.daemon");
+            (void)!system("(sleep 2; open http://localhost:8180) >/dev/null 2>&1 &");
+            return 0;
+        }
+#endif
     }
 
     auto sSupportDir = HomePath("/Library/Application Support/aes67-vsc");
