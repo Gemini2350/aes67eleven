@@ -145,7 +145,12 @@ function render() {
 
     const nmos = status.nmos || {};
     $("d-nmos-registry").textContent = nmos.registry || "no registry";
-    $("d-nmos-status").textContent = (nmos.status || "–") + " · Node " + (nmos.node_id || "").slice(0, 8) + "…";
+    $("d-nmos-status").textContent = "Node " + (nmos.node_id || "").slice(0, 8) + "…";
+    //same traffic light as on the setup page: green only for a real registration
+    if (nmos.server_up === false)          pill($("d-nmos-state"), "Port in use", "bad");
+    else if (nmos.status === "registered") pill($("d-nmos-state"), "Registered", "ok");
+    else if (nmos.status === "registration failed") pill($("d-nmos-state"), "Failed", "bad");
+    else                                   pill($("d-nmos-state"), nmos.status || "searching…", "warn");
     if ($("set-nmos-pill")) {
         if (nmos.server_up === false) {
             pill($("set-nmos-pill"), "Port in use", "bad");
