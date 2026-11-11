@@ -273,7 +273,7 @@ canvas { width: 100%; }
 .t-route .t-start { width: 4.2em; }
 .t-range { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .tile .t-meters { height: 30px; max-width: none; }
-.t-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 2px; }
+.t-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 2px; flex-wrap: wrap; }
 .tile.add {
     border: 2px dashed #cfd5df;
     background: transparent;

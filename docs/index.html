@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AES67eleven – AES67 virtual soundcard for macOS with NMOS</title>
+<meta name="description" content="Free and open source AES67 virtual soundcard for macOS: 64 channels, PTP-disciplined clock, NMOS IS-04/05/12/13, ST 2022-7. Also runs as a headless Linux/Docker gateway.">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<style>
+:root {
+    --bg: #f4f5f7; --panel: #ffffff; --line: #e3e6eb; --text: #1b2330; --dim: #6b7586;
+    --accent: #2f6fed; --accent-soft: #e9f0fe; --ok: #2e9e5b; --navy: #16202f;
+}
+* { box-sizing: border-box; margin: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--panel); color: var(--text);
+       font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
+
+header { background: var(--navy); color: #fff; position: sticky; top: 0; z-index: 10; }
+header .wrap { display: flex; align-items: center; gap: 22px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; color: #fff; }
+.brand img { width: 26px; height: 26px; }
+nav { display: flex; gap: 18px; margin-left: 8px; }
+nav a { color: #c5cedb; font-size: 14.5px; }
+nav a:hover { color: #fff; text-decoration: none; }
+header .gh { margin-left: auto; color: #fff; font-size: 14.5px; font-weight: 600; }
+
+.hero { padding: 60px 0 46px; background: linear-gradient(180deg, #fff 0%, var(--bg) 100%); border-bottom: 1px solid var(--line); }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr); gap: 40px; align-items: center; }
+.hero h1 { font-size: 40px; line-height: 1.13; letter-spacing: -.5px; }
+.hero p { color: var(--dim); font-size: 18px; margin: 16px 0 26px; }
+.cta { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn { display: inline-block; padding: 11px 20px; border-radius: 9px; font-weight: 600; font-size: 15.5px;
+       border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.btn:hover { text-decoration: none; border-color: #c9ced8; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.donate { background: var(--ok); border-color: var(--ok); color: #fff; }
+.shot { width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line);
+        box-shadow: 0 18px 44px rgba(16, 24, 40, .16), 0 3px 8px rgba(16, 24, 40, .06); display: block; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 22px; }
+.badge { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+
+section { padding: 58px 0; }
+section.alt { background: var(--bg); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+h2 { font-size: 27px; letter-spacing: -.3px; margin-bottom: 8px; }
+.lead { color: var(--dim); max-width: 720px; margin-bottom: 30px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, .05); }
+.card h3 { font-size: 16.5px; margin-bottom: 6px; }
+.card p { color: var(--dim); font-size: 14.5px; }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+figure { margin: 0; }
+figcaption { color: var(--dim); font-size: 14px; margin-top: 10px; text-align: center; }
+pre { background: var(--navy); color: #e6ebf3; border-radius: 10px; padding: 14px 16px; overflow-x: auto;
+      font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 10px 0 0; }
+.note { color: var(--dim); font-size: 14px; margin-top: 10px; }
+.support { text-align: center; }
+.support .lead { margin: 0 auto 24px; }
+footer { padding: 26px 0 34px; color: var(--dim); font-size: 14px; border-top: 1px solid var(--line); }
+footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; }
+footer .right { margin-left: auto; }
+
+@media (max-width: 860px) {
+    .hero .wrap, .two { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 31px; }
+    nav { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+    <div class="wrap">
+        <a class="brand" href="#top"><img src="logo.svg" alt=""> AES67eleven</a>
+        <nav>
+            <a href="#features">Features</a>
+            <a href="#screenshots">Screenshots</a>
+            <a href="#get">Get it</a>
+            <a href="#support" data-donate-hide>Support</a>
+        </nav>
+        <a class="gh" href="https://github.com/Gemini2350/aes67eleven">GitHub ↗</a>
+    </div>
+</header>
+
+<div class="hero" id="top">
+    <div class="wrap">
+        <div>
+            <h1>AES67 virtual soundcard for macOS — with NMOS</h1>
+            <p>64 channels in and out, a PTP-disciplined device clock and full NMOS control.
+               Free and open source.</p>
+            <div class="cta">
+                <a class="btn primary" href="#get">Get it</a>
+                <a class="btn" href="https://github.com/Gemini2350/aes67eleven">Source on GitHub</a>
+            </div>
+            <div class="badges">
+                <span class="badge">AES67</span><span class="badge">ST 2022-7</span>
+                <span class="badge">IS-04</span><span class="badge">IS-05</span>
+                <span class="badge">IS-12</span><span class="badge">IS-13</span>
+                <span class="badge">BCP-008</span>
+            </div>
+        </div>
+        <img class="shot" src="img/streams.jpg" width="800" height="538"
+             alt="Streams page: one tile per sender and receiver with channel count, first device channel and level meters">
+    </div>
+</div>
+
+<section id="features">
+    <div class="wrap">
+        <h2>What it does</h2>
+        <p class="lead">One Core Audio device that any app can play to and record from — and behind it a
+           complete AES67 node that behaves like broadcast hardware on the network.</p>
+        <div class="grid">
+            <div class="card"><h3>64 × 64 device, PTP-locked</h3>
+                <p>The device clock follows the PTP grandmaster directly. No sample-rate conversion in the
+                   audio path — samples run 1:1 on the media clock.</p></div>
+            <div class="card"><h3>NMOS built in</h3>
+                <p>IS-04 registration, IS-05 connection management, IS-12 control and IS-13 annotation.
+                   BCP-008 monitors report stream health to your controller.</p></div>
+            <div class="card"><h3>Seamless redundancy</h3>
+                <p>ST 2022-7 on two interfaces: senders duplicate onto both legs, receivers merge them
+                   without a click.</p></div>
+            <div class="card"><h3>Streams as tiles</h3>
+                <p>Add a sender or receiver, pick the channel count and the first device channel. Up to
+                   64 of each, 8 channels per stream.</p></div>
+            <div class="card"><h3>File player</h3>
+                <p>Four decks play WAV or MP3 straight onto device channels, with loop and auto-play at
+                   service start — handy as a test source.</p></div>
+            <div class="card"><h3>Linux / Docker gateway</h3>
+                <p>The same engine runs headless on Linux as a playout and monitoring node. Multi-arch
+                   image for amd64 and arm64.</p></div>
+        </div>
+    </div>
+</section>
+
+<section class="alt" id="screenshots">
+    <div class="wrap">
+        <h2>Screenshots</h2>
+        <p class="lead">A web interface on the local machine — no extra app to install.</p>
+        <div class="two">
+            <figure>
+                <img class="shot" src="img/streams.jpg" width="800" height="538" alt="Streams page with sender and receiver tiles">
+                <figcaption>Streams: every sender and receiver is a tile</figcaption>
+            </figure>
+            <figure>
+                <img class="shot" src="img/overview.jpg" width="800" height="537" alt="Overview page with PTP, NMOS, interfaces and 64-channel meters">
+                <figcaption>Overview: PTP, NMOS, interfaces and all 64 channels at a glance</figcaption>
+            </figure>
+        </div>
+    </div>
+</section>
+
+<section id="get">
+    <div class="wrap">
+        <h2>Get it</h2>
+        <p class="lead">AES67eleven is built from source — two commands on a Mac, one for the Docker gateway.</p>
+        <div class="two">
+            <div>
+                <h3>macOS</h3>
+                <p class="note">Needs the Xcode Command Line Tools and CMake.</p>
+<pre>git clone https://github.com/Gemini2350/aes67eleven.git
+cd aes67eleven
+./scripts/install.sh</pre>
+                <p class="note">Installs the audio driver and the menu bar app, then open
+                   <code>http://localhost:8180</code>. Use wired Ethernet for PTP.</p>
+            </div>
+            <div>
+                <h3>Linux / Docker gateway</h3>
+                <p class="note">Headless playout and monitoring node, no soundcard.</p>
+<pre>docker run -d --name aes67eleven \
+  --network host --cap-add SYS_NICE \
+  -v aes67-data:/data \
+  ghcr.io/gemini2350/aes67eleven-gw:latest</pre>
+                <p class="note">Host networking is required for multicast and PTP. See the
+                   <a href="https://github.com/Gemini2350/aes67eleven#linux--docker-gateway">README</a>
+                   for the config file.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="alt support" id="support" data-donate-hide>
+    <div class="wrap">
+        <h2>Support the project</h2>
+        <p class="lead">AES67eleven is free and open source under the MIT license. If it saves you time
+           or a hardware purchase, a donation helps keep it maintained across macOS releases.</p>
+        <a class="btn donate" id="donate" href="">Donate</a>
+    </div>
+</section>
+
+<footer>
+    <div class="wrap">
+        <span>© 2026 Gemini2350 · MIT license</span>
+        <a href="https://github.com/Gemini2350/aes67eleven">GitHub</a>
+        <a href="https://github.com/Gemini2350/aes67eleven/issues">Report an issue</a>
+        <span class="right">AES67eleven is an independent project and not affiliated with the AES.</span>
+    </div>
+</footer>
+
+<script>
+// the donate section shows up once a donation link is configured here
+const DONATE_URL = "";
+if (DONATE_URL) {
+    document.getElementById("donate").href = DONATE_URL;
+} else {
+    document.querySelectorAll("[data-donate-hide]").forEach(el => { el.style.display = "none"; });
+}
+</script>
+</body>
+</html>

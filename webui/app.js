@@ -1076,7 +1076,9 @@ function updateTile(kind, tile, s) {
         cls = s.receiving ? "ok" : (s.running ? "warn" : "off");
         fmt = s.running ? `L${s.bits || 24} / 48 kHz / ${s.channels || "?"} ch` : "not connected";
         addr = s.running ? [s.session_name, legs].filter(Boolean).join(" · ") : "";
+        //one primary action at a time - four buttons do not fit a tile
         tile.querySelector(".t-disc").style.display = s.running ? "" : "none";
+        tile.querySelector(".t-connect").style.display = s.running ? "none" : "";
     }
     const state = tile.querySelector(".t-state");
     state.className = "t-state " + cls;
