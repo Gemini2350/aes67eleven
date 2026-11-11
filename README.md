@@ -30,13 +30,20 @@ Network ─▶ RTP receiver ─jitter buffer─▶ daemon ─▶ [AES67 In] ─l
 - **`aes67vsc-daemon`** (LaunchAgent, no root): PTP slave (slave-only, BMCA, E2E),
   RTP TX/RX (L24/L16, 1 ms ptime, ST 2022-7 legs), NMOS node, web UI.
 
-## Build & install
+## Install
+
+Download the signed and notarized installer from the
+[latest release](https://github.com/Gemini2350/aes67eleven/releases/latest)
+(macOS 13 or later, Apple Silicon and Intel) and double-click it. It installs the
+audio driver and the menu bar app and starts the daemon at login.
+
+Or build from source (Xcode Command Line Tools and CMake):
 
 ```bash
 scripts/install.sh      # builds, installs driver (sudo) + daemon, restarts coreaudiod
 ```
 
-Note: restarting coreaudiod briefly interrupts all system audio.
+Note: installing restarts coreaudiod, which briefly interrupts all system audio.
 
 - Web UI: `http://localhost:8180`
 - NMOS Node API: `http://<ip>:8081/x-nmos/node/v1.3/`, Connection API
@@ -45,7 +52,8 @@ Note: restarting coreaudiod briefly interrupts all system audio.
 - Config: `~/Library/Application Support/aes67-vsc/config.json`
   (`network.interface_primary` = media interface, e.g. `en6`)
 - Logs: `~/Library/Logs/aes67-vsc/daemon.log`
-- Uninstall: `scripts/uninstall.sh`
+- Uninstall: `scripts/uninstall.sh` (after a package install:
+  `bash /usr/local/share/aes67-vsc/uninstall.sh`)
 
 ### Installer package (maintainers)
 

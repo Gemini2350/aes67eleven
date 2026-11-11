@@ -77,6 +77,10 @@ footer .right { margin-left: auto; }
     .hero h1 { font-size: 31px; }
     nav { display: none; }
 }
+.dl { margin: 10px 0 12px; }
+details { margin-top: 14px; }
+details summary { cursor: pointer; color: var(--dim); font-size: 14.5px; font-weight: 600; }
+details[open] summary { margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -166,16 +170,22 @@ footer .right { margin-left: auto; }
 <section id="get">
     <div class="wrap">
         <h2>Get it</h2>
-        <p class="lead">AES67eleven is built from source — two commands on a Mac, one for the Docker gateway.</p>
+        <p class="lead">A signed installer for the Mac, one command for the Docker gateway.</p>
         <div class="two">
             <div>
                 <h3>macOS</h3>
-                <p class="note">Needs the Xcode Command Line Tools and CMake.</p>
+                <p class="note">macOS 13 or later, Apple Silicon and Intel. Signed and notarized.</p>
+                <p class="dl"><a class="btn primary" href="https://github.com/Gemini2350/aes67eleven/releases/latest">Download the installer</a></p>
+                <p class="note">Installs the audio driver and the menu bar app, then open
+                   <code>http://localhost:8180</code>. Allow "Local Network" when macOS asks, and use
+                   wired Ethernet for PTP.</p>
+                <details>
+                    <summary>Build from source</summary>
+                    <p class="note">Needs the Xcode Command Line Tools and CMake.</p>
 <pre>git clone https://github.com/Gemini2350/aes67eleven.git
 cd aes67eleven
 ./scripts/install.sh</pre>
-                <p class="note">Installs the audio driver and the menu bar app, then open
-                   <code>http://localhost:8180</code>. Use wired Ethernet for PTP.</p>
+                </details>
             </div>
             <div>
                 <h3>Linux / Docker gateway</h3>
