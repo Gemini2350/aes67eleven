@@ -189,7 +189,10 @@ cd aes67eleven
         <h2>Support the project</h2>
         <p class="lead">AES67eleven is free and open source under the MIT license. If it saves you time
            or a hardware purchase, a donation helps keep it maintained across macOS releases.</p>
-        <a class="btn donate" id="donate" href="">Donate</a>
+        <div class="cta" style="justify-content:center">
+            <a class="btn donate" id="donate-sponsors" href="">♥ Sponsor on GitHub</a>
+            <a class="btn" id="donate-paypal" href="">Donate via PayPal</a>
+        </div>
     </div>
 </section>
 
@@ -203,11 +206,18 @@ cd aes67eleven
 </footer>
 
 <script>
-// the donate section shows up once a donation link is configured here
-const DONATE_URL = "";
-if (DONATE_URL) {
-    document.getElementById("donate").href = DONATE_URL;
-} else {
+// donation links: a button appears once its link is filled in; with none set
+// the whole support section stays hidden (a dead button is worse than none)
+const DONATE = {
+    sponsors: "",   // https://github.com/sponsors/Gemini2350 - once the profile is approved
+    paypal: ""      // https://paypal.me/...
+};
+let any = false;
+for (const [key, url] of Object.entries(DONATE)) {
+    const el = document.getElementById("donate-" + key);
+    if (url) { el.href = url; any = true; } else { el.style.display = "none"; }
+}
+if (!any) {
     document.querySelectorAll("[data-donate-hide]").forEach(el => { el.style.display = "none"; });
 }
 </script>
