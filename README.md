@@ -84,10 +84,13 @@ free channel mapping:
 - Audio path: IOProcs read the tap lists as atomically swapped snapshots — no lock
   on the realtime path.
 - Old configs (single sender or fixed slots) are migrated at startup.
-- **Web UI**: the "Matrix" tab shows the TX/RX matrix graphically (clicking a cell
-  assigns or removes a device channel; the digit is the stream channel). The
-  receiver/sender pages have a stream selector (RX 1…n / TX 1…n) — meters, BCP-008
-  status, connect and transport refer to the selected stream.
+- **Web UI**: the "Streams" page shows every sender and receiver as a **tile**
+  (add via the "+" tile, remove on the tile itself). Routing is deliberately
+  simple: per tile you choose the number of channels (senders) or the maximum
+  number of channels (receivers) and the **first device channel** on the 64-channel
+  device — the block maps contiguously. Labels edit in place (via IS-13), a
+  "Details" view offers transport settings, SDP, the NMOS sender browser and
+  manual SDP connect. (The API still accepts arbitrary `channel_map`s.)
 - The daemon runs as **"AES67eleven.app"** (`/Applications`) with a **menu bar
   icon**: status line (PTP/TX/RX), "Open web UI", "Quit" (clean stop; launchd only
   restarts after crashes, not after a deliberate quit). Double-clicking in Finder

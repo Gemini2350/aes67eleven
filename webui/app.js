@@ -10,8 +10,10 @@ const sndOpen = new Set();      //expanded device groups, kept across refreshes
 
 /* ---------- navigation ---------- */
 function showPage(name) {
+    if (name === "ptp" || name === "matrix") name = name === "ptp" ? "settings" : "streams";
     if (!$("page-" + name)) return;
-    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.page === name));
+    const tabOf = {receiver: "streams", sender: "streams"}[name] || name;
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.page === tabOf));
     document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
     $("page-" + name).classList.add("active");
     history.replaceState(null, "", "#" + name);
@@ -21,6 +23,7 @@ function showPage(name) {
 }
 document.querySelectorAll(".tab").forEach(tab => { tab.onclick = () => showPage(tab.dataset.page); });
 if (location.hash.length > 1) showPage(location.hash.slice(1));
+window.addEventListener("hashchange", () => { if (location.hash.length > 1) showPage(location.hash.slice(1)); });
 
 /* ---------- helpers ---------- */
 const STATE_NAMES = ["Inactive", "Healthy", "Partially healthy", "Unhealthy"];
@@ -94,6 +97,7 @@ function applyMeters(m) {
     //device banks via the stream's channel map
     updateStreamBank($("rx-meters"), selRxStatus(), m.in64 || []);
     updateStreamBank($("tx-meters"), selTxStatus(), m.out64 || []);
+    updateTileMeters(m);
 }
 
 function updateStreamBank(el, stream, vals64) {
@@ -130,6 +134,7 @@ function render() {
     renderSelectors();
     renderMatrixPage();
     renderPlayers();
+    renderStreams();
 
     /* dashboard */
     pill($("d-ptp-state"), ptp.synced ? "Locked" : (ptp.masters && ptp.masters.length ? "Syncing…" : "No master"),
@@ -290,11 +295,11 @@ function drawBufferChart(history, criticalMs, live) {
     history.forEach((s, i) => { i ? ctx.lineTo(x(i), y(s[1])) : ctx.moveTo(x(i), y(s[1])); });
     for (let i = history.length - 1; i >= 0; i--) ctx.lineTo(x(i), y(history[i][0]));
     ctx.closePath();
-    ctx.fillStyle = "rgba(77,163,255,.22)";
+    ctx.fillStyle = "rgba(47,111,237,.16)";
     ctx.fill();
 
     /* last-value line */
-    ctx.strokeStyle = "#4da3ff";
+    ctx.strokeStyle = "#2f6fed";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     history.forEach((s, i) => { i ? ctx.lineTo(x(i), y(s[2])) : ctx.moveTo(x(i), y(s[2])); });
@@ -342,7 +347,7 @@ function drawChart(history) {
     const values = history.map(p => p[1]);
     const max = Math.max(1000, ...values.map(Math.abs));
     const Y = v => h / 2 - (v / max) * (h / 2 - 6);
-    ctx.strokeStyle = "#2a3245";
+    ctx.strokeStyle = "#e3e6eb";
     ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
 
     /* raw measurements: dim scatter - this is timestamp noise, not the clock */
@@ -353,7 +358,7 @@ function drawChart(history) {
 
     /* what the servo actually follows: smoothed line */
     let ema = values[0];
-    ctx.strokeStyle = "#4da3ff";
+    ctx.strokeStyle = "#2f6fed";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     values.forEach((v, i) => {
@@ -917,6 +922,192 @@ $("pl-upload").onchange = async e => {
     e.target.value = "";
     loadPlayerFiles();
 };
+
+
+/* ---------- streams page: one tile per sender/receiver ---------- */
+const STREAM_KINDS = [
+    {type: "sender", key: "senders", host: "st-tx", tag: "TX", bank: "out64", page: "sender"},
+    {type: "receiver", key: "receivers", host: "st-rx", tag: "RX", bank: "in64", page: "receiver"}
+];
+const streamCfg = (kind, index) => (((status.config || {})[kind.key]) || [])[index] || {};
+const isContiguous = map => map.length > 0 && map.every((ch, i) => ch === map[0] + i);
+const blockMap = (start, channels) => Array.from({length: channels}, (_, i) => start + i);
+
+/* lowest start channel where a block of n channels is unused by streams of the same kind */
+function firstFreeStart(list, channels) {
+    const used = new Set();
+    list.forEach(s => (s.channel_map || []).forEach(ch => used.add(ch)));
+    for (let start = 0; start + channels <= 64; start++) {
+        if (blockMap(start, channels).every(ch => !used.has(ch))) return start;
+    }
+    return 0;
+}
+
+/* labels go through IS-13 (persists + updates the registry without restarting the stream) */
+async function setStreamLabel(kind, s, label) {
+    const port = (status.nmos || {}).port || 8081;
+    try {
+        const r = await fetch(`http://${location.hostname}:${port}/x-nmos/annotation/v1.0/node/${kind.key}/${s.id}`, {
+            method: "PATCH", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({label: label || null})
+        });
+        if (!r.ok) throw new Error("annotation api");
+    } catch (e) {
+        await setConfig({[`${kind.key}.${s.index}.label`]: label});
+    }
+}
+
+function tileHtml(kind, s) {
+    const chOpts = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option value="${n}">${n}</option>`).join("");
+    const actions = kind.type === "sender"
+        ? `<button class="btn sm go t-toggle">Start</button>`
+        : `<button class="btn sm primary t-connect">Connect…</button>
+           <button class="btn sm t-disc">Disconnect</button>`;
+    return `
+        <div class="tile ${kind.type}" data-tile="${s.index}">
+            <div class="tile-head">
+                <span class="tag ${kind.tag.toLowerCase()}">${kind.tag} ${s.index + 1}</span>
+                <input class="t-label" placeholder="Label" spellcheck="false">
+                <span class="t-state"><i class="led"></i><span class="t-state-text"></span></span>
+            </div>
+            <div class="t-fmt"></div>
+            <div class="t-addr"></div>
+            <div class="t-route">
+                <label>${kind.type === "sender" ? "Channels" : "Max channels"}
+                    <select class="t-ch">${chOpts}</select></label>
+                <label>Start ch <input class="t-start" type="number" min="1" max="64"></label>
+                <span class="t-range"></span>
+            </div>
+            <div class="bank small t-meters"></div>
+            <div class="t-actions">
+                ${actions}
+                <button class="btn sm t-details">Details</button>
+                <button class="btn sm t-del right" title="Remove this ${kind.type}">✕</button>
+            </div>
+        </div>`;
+}
+
+function wireTiles(kind, host) {
+    const current = index => (status[kind.key] || [])[index] || {};
+    const remap = async (index, start, channels) => {
+        channels = Math.max(1, Math.min(8, channels));
+        start = Math.max(0, Math.min(64 - channels, start));
+        await api("/api/action/stream-map", "POST",
+                  {type: kind.type, index, channel_map: blockMap(start, channels)}).catch(alert);
+    };
+    host.querySelectorAll("[data-tile]").forEach(tile => {
+        const index = +tile.dataset.tile;
+        const map = () => current(index).channel_map || [0];
+        tile.querySelector(".t-label").onchange = e => setStreamLabel(kind, current(index), e.target.value.trim());
+        tile.querySelector(".t-ch").onchange = e => remap(index, map()[0], +e.target.value);
+        tile.querySelector(".t-start").onchange = e => remap(index, (parseInt(e.target.value, 10) || 1) - 1, map().length);
+        tile.querySelector(".t-details").onclick = () => {
+            if (kind.type === "sender") { selTx = index; } else { selRx = index; }
+            loadConfig();
+            showPage(kind.page);
+            render();
+        };
+        const toggle = tile.querySelector(".t-toggle");
+        if (toggle) toggle.onclick = () =>
+            setConfig({[`senders.${index}.enabled`]: !current(index).running});
+        const connect = tile.querySelector(".t-connect");
+        if (connect) connect.onclick = () => { selRx = index; loadConfig(); showPage("receiver"); render(); };
+        const disc = tile.querySelector(".t-disc");
+        if (disc) disc.onclick = () => api("/api/action/receiver-disconnect", "POST", {stream: index}).catch(alert);
+        const del = tile.querySelector(".t-del");
+        del.onclick = async () => {
+            if (del.dataset.armed !== "1") {
+                del.dataset.armed = "1";
+                del.textContent = "Remove?";
+                del.classList.add("danger");
+                setTimeout(() => { del.dataset.armed = "0"; del.textContent = "✕"; del.classList.remove("danger"); }, 4000);
+                return;
+            }
+            await api("/api/action/stream-remove", "POST", {type: kind.type, index}).catch(alert);
+        };
+    });
+    host.querySelector("[data-add]").onclick = async () => {
+        const list = status[kind.key] || [];
+        await api("/api/action/stream-add", "POST",
+                  {type: kind.type, channels: 2, channel_offset: firstFreeStart(list, 2)}).catch(alert);
+    };
+}
+
+function updateTile(kind, tile, s) {
+    if (!tile) return;
+    const cfg = streamCfg(kind, s.index);
+    const map = s.channel_map || [];
+    const setIfIdle = (el, value) => { if (document.activeElement !== el && el.value != value) el.value = value; };
+    setIfIdle(tile.querySelector(".t-label"), cfg.label || "");
+    setIfIdle(tile.querySelector(".t-ch"), map.length || 1);
+    setIfIdle(tile.querySelector(".t-start"), (map[0] ?? 0) + 1);
+    tile.querySelector(".t-range").textContent = !map.length ? "" :
+        isContiguous(map) ? `→ device ch ${map[0] + 1}–${map[map.length - 1] + 1}` : "→ custom map";
+
+    let cls = "off", text, fmt, addr;
+    const legs = (s.legs || []).filter(l => l.multicast).map(l => `${l.multicast}:${l.port}`).join(" · ");
+    if (kind.type === "sender") {
+        text = s.running ? (s.waiting_for_ptp ? "Waiting for PTP" : "On air") : "Stopped";
+        cls = s.running ? (s.waiting_for_ptp ? "warn" : "ok") : "off";
+        fmt = `L${s.bits || cfg.bits || 24} / 48 kHz / ${map.length} ch`;
+        addr = legs || `${cfg.multicast_primary || "–"}:${cfg.port || 5004}`;
+        const toggle = tile.querySelector(".t-toggle");
+        toggle.textContent = s.running ? "Stop" : "Start";
+        toggle.classList.toggle("go", !s.running);
+    } else {
+        text = s.receiving ? "Receiving" : (s.running ? "No signal" : "Idle");
+        cls = s.receiving ? "ok" : (s.running ? "warn" : "off");
+        fmt = s.running ? `L${s.bits || 24} / 48 kHz / ${s.channels || "?"} ch` : "not connected";
+        addr = s.running ? [s.session_name, legs].filter(Boolean).join(" · ") : "pick a sender via Connect…";
+        tile.querySelector(".t-disc").style.display = s.running ? "" : "none";
+    }
+    const state = tile.querySelector(".t-state");
+    state.className = "t-state " + cls;
+    state.querySelector(".t-state-text").textContent = text;
+    tile.querySelector(".t-fmt").textContent = fmt;
+    const addrEl = tile.querySelector(".t-addr");
+    addrEl.textContent = addr;
+    addrEl.title = addr;
+}
+
+function renderStreams() {
+    for (const kind of STREAM_KINDS) {
+        const host = $(kind.host);
+        if (!host) continue;
+        const list = status[kind.key] || [];
+        const fp = JSON.stringify(list.map(s => s.id));
+        if (host.dataset.fp !== fp) {
+            host.dataset.fp = fp;
+            host.innerHTML = list.map(s => tileHtml(kind, s)).join("") +
+                `<div class="tile add" data-add="${kind.type}"><span class="plus">+</span>Add ${kind.type}</div>`;
+            wireTiles(kind, host);
+        }
+        list.forEach(s => updateTile(kind, host.querySelector(`[data-tile="${s.index}"]`), s));
+        const count = $(kind.host + "-count");
+        if (count) count.textContent = list.length;
+    }
+    /* titles of the detail pages */
+    const title = (el, kind, sel) => {
+        if (!el) return;
+        const label = streamCfg(kind, sel).label;
+        el.textContent = `${kind.tag} ${sel + 1}` + (label ? ` · ${label}` : "");
+    };
+    title($("tx-title"), STREAM_KINDS[0], selTx);
+    title($("rx-title"), STREAM_KINDS[1], selRx);
+}
+
+function updateTileMeters(m) {
+    for (const kind of STREAM_KINDS) {
+        const host = $(kind.host);
+        if (!host || !host.offsetParent) continue;      //page hidden - skip the 20 Hz work
+        (status[kind.key] || []).forEach(s => {
+            const tile = host.querySelector(`[data-tile="${s.index}"]`);
+            if (tile) updateStreamBank(tile.querySelector(".t-meters"), s, m[kind.bank] || []);
+        });
+    }
+}
+
+document.querySelectorAll("[data-back]").forEach(btn => { btn.onclick = () => showPage("streams"); });
 
 loadConfig();
 loadNetwork();

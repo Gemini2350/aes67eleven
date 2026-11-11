@@ -12,12 +12,9 @@
 <nav id="nav">
     <div class="brand"><img src="logo.svg" alt="" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px"><span class="dot" id="conn-dot"></span> AES67eleven</div>
     <button class="tab active" data-page="dashboard">Overview</button>
-    <button class="tab" data-page="receiver">Receiver</button>
-    <button class="tab" data-page="sender">Sender</button>
-    <button class="tab" data-page="matrix">Matrix</button>
+    <button class="tab" data-page="streams">Streams</button>
     <button class="tab" data-page="player">Player</button>
-    <button class="tab" data-page="ptp">PTP</button>
-    <button class="tab" data-page="settings">Setup</button>
+    <button class="tab" data-page="settings">Setup &amp; PTP</button>
 </nav>
 
 <main>
@@ -49,19 +46,29 @@
     </div>
 </section>
 
-<!-- ================= RECEIVER ================= -->
+<!-- ================= STREAMS (tiles) ================= -->
+<section id="page-streams" class="page">
+    <div class="sec-head">
+        <h1>Senders</h1><span class="count" id="st-tx-count">0</span>
+        <span class="sub">apps → network · pick how many channels and where they start on the 64-channel device</span>
+    </div>
+    <div id="st-tx" class="tiles"></div>
+    <div class="sec-head">
+        <h1>Receivers</h1><span class="count" id="st-rx-count">0</span>
+        <span class="sub">network → apps · maximum channels and first device channel</span>
+    </div>
+    <div id="st-rx" class="tiles"></div>
+</section>
+
+<!-- ================= RECEIVER (detail) ================= -->
 <section id="page-receiver" class="page">
-    <div class="row seg" id="rx-select" style="margin-bottom:10px"></div>
+    <div class="detail-bar"><button class="btn sm" data-back>← Streams</button><span class="detail-title" id="rx-title"></span></div>
     <div class="grid">
         <div class="card wide">
             <h2>Status <span class="pill" id="rx-overall">–</span>
                 <span class="sub" id="rx-mini" style="text-transform:none">–</span></h2>
             <div id="rx-meters" class="bank small"></div>
             <canvas id="rx-buffer-chart" height="56"></canvas>
-        </div>
-        <div class="card wide">
-            <h2>Patch <span class="sub">(receiver → device channels · click to change, digit = stream channel)</span></h2>
-            <div id="rx-patch" class="mx"></div>
         </div>
         <div class="card wide">
             <h2>NMOS senders
@@ -84,20 +91,6 @@
     </div>
 </section>
 
-<!-- ================= MATRIX ================= -->
-<section id="page-matrix" class="page">
-    <div class="grid">
-        <div class="card wide">
-            <h2>TX matrix <span class="sub">(device channel → transmitter · click to assign/remove, digit = stream channel)</span></h2>
-            <div id="mx-tx" class="mx"></div>
-        </div>
-        <div class="card wide">
-            <h2>RX matrix <span class="sub">(receiver → device channel)</span></h2>
-            <div id="mx-rx" class="mx"></div>
-        </div>
-    </div>
-</section>
-
 <!-- ================= PLAYER ================= -->
 <section id="page-player" class="page">
     <div class="grid">
@@ -112,9 +105,9 @@
     </div>
 </section>
 
-<!-- ================= SENDER ================= -->
+<!-- ================= SENDER (detail) ================= -->
 <section id="page-sender" class="page">
-    <div class="row seg" id="tx-select" style="margin-bottom:10px"></div>
+    <div class="detail-bar"><button class="btn sm" data-back>← Streams</button><span class="detail-title" id="tx-title"></span></div>
     <div class="grid">
         <div class="card wide">
             <h2>Status <span class="pill" id="tx-state">–</span>
@@ -125,10 +118,6 @@
                 <button class="btn primary" id="tx-start">Start</button>
                 <button class="btn" id="tx-stop">Stop</button>
             </div>
-        </div>
-        <div class="card wide">
-            <h2>Inputs <span class="sub">(device channels → this transmitter · click to change, digit = stream channel)</span></h2>
-            <div id="tx-patch" class="mx"></div>
         </div>
         <div class="card">
             <h2>Transport</h2>
@@ -151,31 +140,6 @@
                 <button class="btn" id="tx-copy-sdp" style="display:none">Copy</button>
             </h2>
             <pre id="tx-sdp" class="sdp" style="display:none"></pre>
-        </div>
-    </div>
-</section>
-
-<!-- ================= PTP ================= -->
-<section id="page-ptp" class="page">
-    <div class="grid">
-        <div class="card wide">
-            <h2>Analyzer <span class="pill" id="ptp-state">–</span>
-                <label class="inline right"><input type="checkbox" id="ptp-domain-auto"> Auto</label>
-                <label class="inline right">Domain <input type="number" id="ptp-domain" min="0" max="127" style="width:5.5em"></label>
-            </h2>
-            <div class="big small" id="ptp-time">–</div>
-            <div class="sub">Own identity: <span id="ptp-identity">–</span> · domain <span id="ptp-active-domain">–</span> · correction <span id="ptp-offset">–</span> · path delay <span id="ptp-delay">–</span></div>
-            <div class="sub" id="ptp-meta" style="display:none"></div>
-            <table class="masters" id="ptp-masters">
-                <thead><tr>
-                    <th>BMCA</th><th>Source</th><th>Grandmaster</th><th>P1</th><th>Class</th><th>Acc</th><th>Var</th><th>P2</th><th>Steps</th><th>Ann</th><th>Net</th><th>Decision</th>
-                </tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-        <div class="card wide">
-            <h2>Correction history <span class="sub">(ns, around the mean)</span></h2>
-            <canvas id="ptp-chart" height="120"></canvas>
         </div>
     </div>
 </section>
@@ -218,6 +182,26 @@
             <button class="btn primary" id="set-save">Save &amp; apply</button>
             <div class="sub" id="set-save-info" style="text-transform:none">Interface/registry/port changes restart the service automatically</div>
         </div>
+    </div>
+    <div class="sec-head" style="margin-top:22px"><h1>PTP</h1><span class="sub">IEEE 1588 slave · the device clock follows the selected grandmaster</span></div>
+    <div class="grid">
+        <div class="card wide">
+            <h2>Analyzer <span class="pill" id="ptp-state">–</span>
+                <label class="inline right"><input type="checkbox" id="ptp-domain-auto"> Auto</label>
+                <label class="inline right">Domain <input type="number" id="ptp-domain" min="0" max="127" style="width:5.5em"></label>
+            </h2>
+            <div class="big small" id="ptp-time">–</div>
+            <div class="sub">Own identity: <span id="ptp-identity">–</span> · domain <span id="ptp-active-domain">–</span> · correction <span id="ptp-offset">–</span> · path delay <span id="ptp-delay">–</span></div>
+            <div class="sub" id="ptp-meta" style="display:none"></div>
+            <canvas id="ptp-chart" height="64" class="ptp-chart" title="Correction history (ns, around the mean) - dots: raw measurements, line: servo"></canvas>
+            <table class="masters" id="ptp-masters">
+                <thead><tr>
+                    <th>BMCA</th><th>Source</th><th>Grandmaster</th><th>P1</th><th>Class</th><th>Acc</th><th>Var</th><th>P2</th><th>Steps</th><th>Ann</th><th>Net</th><th>Decision</th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    
     </div>
 </section>
 </main>
