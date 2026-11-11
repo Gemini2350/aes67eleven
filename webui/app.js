@@ -17,7 +17,7 @@ function showPage(name) {
     document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
     $("page-" + name).classList.add("active");
     history.replaceState(null, "", "#" + name);
-    if (name === "settings") loadNetwork();
+    if (name === "settings" || name === "dashboard") loadNetwork();
     if (name === "receiver") loadSenders();
     if (name === "player") loadPlayerFiles();
 }
@@ -712,12 +712,14 @@ $("tx-copy-sdp").onclick = () => navigator.clipboard.writeText($("tx-sdp").textC
 
 /* ---------- interface setup ---------- */
 async function loadNetwork() {
+    //shown twice: overview (status at a glance) and setup (next to the selectors)
+    const hosts = [$("net-ifs"), $("d-net-ifs")].filter(Boolean);
     let ifs;
     try { ifs = (await api("/api/action/network-status", "POST", {})).interfaces || []; }
-    catch (e) { $("net-ifs").textContent = "network state unavailable"; return; }
+    catch (e) { hosts.forEach(el => { el.textContent = "network state unavailable"; }); return; }
 
     //status only - interface addressing is managed in macos system settings
-    $("net-ifs").innerHTML = ifs.map(f => `
+    const html = ifs.map(f => `
         <div class="netif">
             <div class="row">
                 <span class="pill ${f.role}">${f.role.toUpperCase()}</span>
@@ -726,7 +728,10 @@ async function loadNetwork() {
                 <span class="cur">${f.address || "no address"}</span>
             </div>
         </div>`).join("") || `<div class="sub">no interfaces configured</div>`;
+    hosts.forEach(el => { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } });
 }
+//link state changes without a page switch (cable pulled, dhcp) - keep the overview current
+setInterval(() => { if ($("page-dashboard").classList.contains("active")) loadNetwork(); }, 5000);
 
 /* ---------- settings ---------- */
 $("set-save").onclick = async () => {
