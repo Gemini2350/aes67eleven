@@ -1,0 +1,27 @@
+#!/bin/bash
+# runs as root after the payload is in place: let coreaudiod pick up the
+# driver and start the daemon as a LaunchAgent of the logged-in user
+
+# SIP forbids kickstarting apple daemons - killall works, launchd restarts it
+killall coreaudiod 2>/dev/null
+sleep 2
+
+CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null)"
+if [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "root" ] || [ "$CONSOLE_USER" = "loginwindow" ]; then
+    echo "no user logged in - start AES67eleven from /Applications after login"
+    exit 0
+fi
+CONSOLE_UID="$(id -u "$CONSOLE_USER")"
+CONSOLE_HOME="$(dscl . -read "/Users/${CONSOLE_USER}" NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')"
+PLIST="${CONSOLE_HOME}/Library/LaunchAgents/com.aes67vsc.daemon.plist"
+
+sudo -u "$CONSOLE_USER" mkdir -p "${CONSOLE_HOME}/Library/LaunchAgents" \
+     "${CONSOLE_HOME}/Library/Logs/aes67-vsc" \
+     "${CONSOLE_HOME}/Library/Application Support/aes67-vsc"
+sed "s|__HOME__|${CONSOLE_HOME}|g" /usr/local/share/aes67-vsc/com.aes67vsc.daemon.plist > "$PLIST"
+chown "$CONSOLE_USER" "$PLIST"
+chmod 644 "$PLIST"
+
+launchctl bootout "gui/${CONSOLE_UID}/com.aes67vsc.daemon" 2>/dev/null
+launchctl bootstrap "gui/${CONSOLE_UID}" "$PLIST"
+exit 0

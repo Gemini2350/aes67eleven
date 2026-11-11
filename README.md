@@ -47,6 +47,19 @@ Note: restarting coreaudiod briefly interrupts all system audio.
 - Logs: `~/Library/Logs/aes67-vsc/daemon.log`
 - Uninstall: `scripts/uninstall.sh`
 
+### Installer package (maintainers)
+
+```bash
+scripts/package.sh --notarize   # dist/AES67eleven-<version>.pkg, universal (arm64 + x86_64)
+```
+
+Builds, signs with hardened runtime and wraps everything into a signed installer
+package that sets up the driver, the app and the LaunchAgent. Needs a
+"Developer ID Application" and a "Developer ID Installer" certificate in the
+keychain, and for `--notarize` a notarytool keychain profile named
+`aes67eleven-notary` (`xcrun notarytool store-credentials`). Without the flag
+the package is signed but not notarized — fine for your own Macs only.
+
 On first start macOS asks for the **"Local Network" permission** for the daemon —
 allow it (System Settings → Privacy & Security → Local Network), otherwise no
 multicast will arrive. PTP needs wired Ethernet; Wi-Fi timestamps are unusable.

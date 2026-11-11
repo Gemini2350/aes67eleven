@@ -1,0 +1,15 @@
+#!/bin/bash
+# runs as root before the payload is copied: stop a running daemon so its
+# binary can be replaced, and clear leftovers of older installs
+
+CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null)"
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && [ "$CONSOLE_USER" != "loginwindow" ]; then
+    CONSOLE_UID="$(id -u "$CONSOLE_USER")"
+    launchctl bootout "gui/${CONSOLE_UID}/com.aes67vsc.daemon" 2>/dev/null
+    for _ in $(seq 1 15); do pgrep -f aes67vsc-daemon >/dev/null || break; sleep 1; done
+fi
+
+rm -rf "/Applications/AES67 VSC.app" /usr/local/libexec/aes67vsc-daemon
+rm -rf /Applications/AES67eleven.app /Library/Audio/Plug-Ins/HAL/AES67VSC.driver
+rm -rf /usr/local/share/aes67-vsc/webui
+exit 0
