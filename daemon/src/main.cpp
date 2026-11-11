@@ -867,6 +867,7 @@ int main(int argc, char** argv)
                 return {{"error", "query api not reachable (status " + std::to_string(nStatus) + ")"}};
             }
             auto jsFlows = FetchAll(sRegistry + "/x-nmos/query/v1.3/flows");
+            auto jsSources = FetchAll(sRegistry + "/x-nmos/query/v1.3/sources");   //channel layout
             auto jsDevices = FetchAll(sRegistry + "/x-nmos/query/v1.3/devices");
 
             auto Find = [](const std::optional<json>& jsList, const std::string& sId) -> json
@@ -894,11 +895,32 @@ int main(int argc, char** argv)
                 {
                     bActive = jsSender["subscription"].value("active", true);
                 }
+                //format details for the browser: channel count lives on the
+                //source, bit depth and sample rate on the flow (all optional)
+                json jsChannels, jsBits, jsRate;
+                auto jsSource = Find(jsSources, StringOr(jsFlow, "source_id"));
+                if(jsSource.contains("channels") && jsSource["channels"].is_array())
+                {
+                    jsChannels = jsSource["channels"].size();
+                }
+                if(jsFlow.contains("bit_depth") && jsFlow["bit_depth"].is_number())
+                {
+                    jsBits = jsFlow["bit_depth"];
+                }
+                if(jsFlow.contains("sample_rate") && jsFlow["sample_rate"].is_object())
+                {
+                    double dNumerator = jsFlow["sample_rate"].value("numerator", 0.0);
+                    double dDenominator = jsFlow["sample_rate"].value("denominator", 1.0);
+                    if(dNumerator > 0 && dDenominator > 0) { jsRate = dNumerator / dDenominator; }
+                }
                 jsList.push_back({
                     {"id", jsSender.value("id", "")},
                     {"label", jsSender.value("label", "")},
                     {"device", Find(jsDevices, StringOr(jsSender, "device_id")).value("label", "")},
                     {"media_type", jsFlow.value("media_type", "")},
+                    {"channels", jsChannels},
+                    {"bit_depth", jsBits},
+                    {"sample_rate", jsRate},
                     {"manifest_href", StringOr(jsSender, "manifest_href")},
                     {"active", bActive},
                     {"is_self", node.SenderIndex(jsSender.value("id", "")) != std::string::npos}

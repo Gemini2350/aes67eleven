@@ -329,3 +329,7 @@ canvas { width: 100%; }
 .actionbar .sub { margin-top: 0; }
 .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 760px) { .grid.two { grid-template-columns: 1fr; } }
+
+/* format summary next to a sender in the nmos browser */
+.fmt-chip { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 6px; font-size: 12px;
+            background: var(--panel2); color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }

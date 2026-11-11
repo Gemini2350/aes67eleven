@@ -395,6 +395,17 @@ async function loadSenders() {
     renderSenders();
 }
 
+/* "8 ch · L24 · 48 kHz" from whatever the registry knows about the sender's flow/source */
+function senderFormat(s) {
+    const parts = [];
+    if (s.channels) parts.push(`${s.channels} ch`);
+    const bits = s.bit_depth || (/L(\d+)/.exec(s.media_type || "") || [])[1];
+    if (bits) parts.push(`L${bits}`);
+    else if (s.media_type) parts.push(s.media_type.replace("audio/", ""));
+    if (s.sample_rate) parts.push(`${+(s.sample_rate / 1000).toFixed(1)} kHz`);
+    return parts.join(" · ");
+}
+
 function renderSenders() {
     if (!sendersCache.length) { $("rx-senders").textContent = "no audio senders in the registry"; return; }
     const filter = ($("rx-filter").value || "").trim().toLowerCase();
@@ -421,7 +432,7 @@ function renderSenders() {
                 return `<tr${s.active === false ? ' class="snd-inactive"' : ""}>
                 <td>${esc(s.label) || "(unnamed)"}${s.is_self ? ' <span class="pill off">this device</span>' : ""}
                     ${s.active === false ? ' <span class="pill off">inactive</span>' : ""}
-                    ${s.media_type ? `<span class="sub"> · ${esc(s.media_type)}</span>` : ""}</td>
+                    ${senderFormat(s) ? `<span class="fmt-chip">${esc(senderFormat(s))}</span>` : ""}</td>
                 <td style="text-align:right">${s.id === cur
                     ? '<span class="pill ok">connected</span> <button class="btn" data-off="' + i + '">Disconnect</button>'
                     : '<button class="btn" data-on="' + i + '"' + (s.manifest_href ? "" : " disabled") + '>Connect</button>'}
