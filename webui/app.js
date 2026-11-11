@@ -177,7 +177,7 @@ function render() {
         ? `${rx.receiving ? "receiving" : "no signal"} · ${rx.session_name || ""} · ` +
           `${rx.played || 0} pkts · ${rx.concealed || 0} concealed` + (rxLegs ? " · " + rxLegs : "") +
           (rmon.overall_message ? " · " + rmon.overall_message : "")
-        : "not connected — pick an NMOS sender or paste an SDP";
+        : "not connected";
 
     /* keep the gain slider in sync with changes made from other browsers,
        unless the user is moving it right now */
@@ -370,7 +370,7 @@ function drawChart(history) {
     const std = Math.sqrt(values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / values.length);
     ctx.fillStyle = "#8b93a7";
     ctx.font = "11px sans-serif";
-    ctx.fillText(`±${fmtNs(max)} · raw σ ${fmtNs(std)} (dots = measurement noise, line = servo)`, 6, 14);
+    ctx.fillText(`±${fmtNs(max)} · raw σ ${fmtNs(std)} `, 6, 14);
 }
 
 /* ---------- nmos sender browser ---------- */
@@ -704,8 +704,7 @@ $("tx-apply").onclick = async () => {
         [txKey("port")]: parseInt($("tx-port").value, 10) || 5004
     });
     $("tx-apply-info").textContent = "applied";
-    setTimeout(() => { $("tx-apply-info").textContent =
-        "restarts this transmitter with the new destination"; }, 2500);
+    setTimeout(() => { $("tx-apply-info").textContent = ""; }, 2500);
 };
 let cfgTouchedAt = 0;
 ["tx-mc1", "tx-mc2", "tx-port"].forEach(id => { $(id).oninput = () => { cfgTouchedAt = Date.now(); }; });
@@ -769,8 +768,7 @@ $("set-save").onclick = async () => {
         setTimeout(() => location.reload(), 4000);
     } else {
         $("set-save-info").textContent = "applied";
-        setTimeout(() => { $("set-save-info").textContent =
-            "Interface/registry/port changes restart the service automatically"; }, 3000);
+        setTimeout(() => { $("set-save-info").textContent = ""; }, 3000);
     }
 };
 $("ptp-domain").onchange = () => setConfig({"ptp.domain": parseInt($("ptp-domain").value, 10)});
@@ -1072,7 +1070,7 @@ function updateTile(kind, tile, s) {
         text = s.receiving ? "Receiving" : (s.running ? "No signal" : "Idle");
         cls = s.receiving ? "ok" : (s.running ? "warn" : "off");
         fmt = s.running ? `L${s.bits || 24} / 48 kHz / ${s.channels || "?"} ch` : "not connected";
-        addr = s.running ? [s.session_name, legs].filter(Boolean).join(" · ") : "pick a sender via Connect…";
+        addr = s.running ? [s.session_name, legs].filter(Boolean).join(" · ") : "";
         tile.querySelector(".t-disc").style.display = s.running ? "" : "none";
     }
     const state = tile.querySelector(".t-state");

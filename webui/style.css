@@ -333,3 +333,17 @@ canvas { width: 100%; }
 /* format summary next to a sender in the nmos browser */
 .fmt-chip { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 6px; font-size: 12px;
             background: var(--panel2); color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* hover hints: a small "i" badge instead of permanent explanatory text */
+.hint { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px;
+        border-radius: 50%; border: 1px solid var(--off); color: var(--dim); font: 700 10px/1 Georgia, serif;
+        cursor: help; position: relative; flex: none; text-transform: none; letter-spacing: 0; vertical-align: 1px; }
+.hint::before { content: "i"; }
+.hint:hover { border-color: var(--accent); color: var(--accent); }
+.hint:hover::after {
+    content: attr(data-tip); position: absolute; left: -6px; top: calc(100% + 7px);
+    width: max-content; max-width: 300px; padding: 7px 10px; border-radius: 8px;
+    background: #1b2330; color: #fff; font: 500 12px/1.4 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    white-space: normal; text-align: left; z-index: 30; box-shadow: 0 6px 18px rgba(16, 24, 40, .22);
+}
+.t-addr:empty { display: none; }

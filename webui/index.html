@@ -40,11 +40,11 @@
             <div id="d-streams" style="text-transform:none"></div>
         </div>
         <div class="card wide">
-            <h2>Receiver <span class="sub">(network → apps · device channels 1–64)</span></h2>
+            <h2>Receiver <span class="hint" data-tip="Network → apps: what arrives on device channels 1–64"></span></h2>
             <div id="bank-in" class="bank"></div>
         </div>
         <div class="card wide">
-            <h2>Transmitter <span class="sub">(apps → network · device channels 1–64)</span></h2>
+            <h2>Transmitter <span class="hint" data-tip="Apps → network: what apps play onto device channels 1–64"></span></h2>
             <div id="bank-out" class="bank"></div>
         </div>
     </div>
@@ -54,12 +54,12 @@
 <section id="page-streams" class="page">
     <div class="sec-head">
         <h1>Senders</h1><span class="count" id="st-tx-count">0</span>
-        <span class="sub">apps → network · pick how many channels and where they start on the 64-channel device</span>
+        <span class="hint" data-tip="Apps → network. Pick how many channels a sender carries and where they start on the 64-channel device."></span>
     </div>
     <div id="st-tx" class="tiles"></div>
     <div class="sec-head">
         <h1>Receivers</h1><span class="count" id="st-rx-count">0</span>
-        <span class="sub">network → apps · maximum channels and first device channel</span>
+        <span class="hint" data-tip="Network → apps. Set the maximum channels a receiver accepts and its first device channel."></span>
     </div>
     <div id="st-rx" class="tiles"></div>
 </section>
@@ -82,7 +82,7 @@
             <div id="rx-senders" class="sub">–</div>
         </div>
         <div class="card wide">
-            <h2>Manual (SDP) <span class="sub">fallback without NMOS</span></h2>
+            <h2>Manual (SDP) <span class="hint" data-tip="Fallback without NMOS: paste the sender's SDP (a=group:DUP supported)"></span></h2>
             <textarea id="rx-sdp" placeholder="Paste SDP here (a=group:DUP supported)…" rows="4"></textarea>
             <div class="row">
                 <button class="btn primary" id="rx-connect">Connect</button>
@@ -99,7 +99,7 @@
 <section id="page-player" class="page">
     <div class="grid">
         <div class="card wide">
-            <h2>Audio files <span class="sub">(WAV / MP3 · decoded to 48 kHz on load · played onto the device channels, so any transmitter can send them)</span></h2>
+            <h2>Audio files <span class="hint" data-tip="WAV or MP3, decoded to 48 kHz on load. Players mix onto the device channels, so any sender covering them streams the audio."></span></h2>
             <div class="row">
                 <input type="file" id="pl-upload" accept=".wav,.mp3">
                 <span id="pl-upload-info" class="sub"></span>
@@ -130,13 +130,12 @@
                 <tr><td>Multicast 2</td><td><input id="tx-mc2" size="14"></td></tr>
                 <tr><td>Port</td><td><input id="tx-port" size="6"></td></tr>
                 <tr><td>Leg 1 RTP</td><td><label class="switch"><input type="checkbox" id="tx-leg1"><span></span></label></td></tr>
-                <tr><td>Leg 2 RTP</td><td><label class="switch"><input type="checkbox" id="tx-leg2"><span></span></label></td></tr>
+                <tr><td>Leg 2 RTP <span class="hint" data-tip="Sent whenever a second interface is configured"></span></td><td><label class="switch"><input type="checkbox" id="tx-leg2"><span></span></label></td></tr>
             </table>
             <div class="row">
-                <button class="btn primary" id="tx-apply">Apply</button>
-                <span class="sub" id="tx-apply-info" style="text-transform:none">restarts this transmitter with the new destination</span>
+                <button class="btn primary" id="tx-apply" title="Restarts this transmitter with the new destination">Apply</button>
+                <span class="sub" id="tx-apply-info" style="text-transform:none"></span>
             </div>
-            <div class="sub">Leg 2 is sent whenever a second interface is configured</div>
         </div>
         <div class="card wide">
             <h2>SDP
@@ -163,24 +162,22 @@
         <div class="card">
             <h2>NMOS <span class="pill" id="set-nmos-pill">–</span></h2>
             <table class="kv">
-                <tr><td>Registry</td><td>
+                <tr><td>Registry <span class="hint" data-tip="Leave the host empty for automatic discovery (unicast DNS-SD). Example: http · registrar1.office.int · 8010"></span></td><td>
                     <select id="set-reg-scheme"><option value="http">http</option><option value="https">https</option></select>
                     <input id="set-reg-host" size="15" placeholder="registrar1.office.int">
                     <input id="set-reg-port" size="5" placeholder="8010">
                 </td></tr>
                 <tr><td>Node API port</td><td><input id="set-nmos-port" size="6"></td></tr>
             </table>
-            <div class="sub" style="text-transform:none">Registry host empty = automatic discovery (unicast DNS-SD).
-                Example: http · registrar1.office.int · 8010</div>
             <div class="sub" id="set-nmos-status" style="text-transform:none">–</div>
             <div class="sub" id="set-version">–</div>
         </div>
         <div class="actionbar">
-            <span class="sub" id="set-save-info">Interface/registry/port changes restart the service automatically</span>
-            <button class="btn primary" id="set-save">Save &amp; apply</button>
+            <span class="sub" id="set-save-info"></span>
+            <button class="btn primary" id="set-save" title="Interface, registry and port changes restart the service automatically">Save &amp; apply</button>
         </div>
     </div>
-    <div class="sec-head" style="margin-top:22px"><h1>PTP</h1><span class="sub">IEEE 1588 slave · the device clock follows the selected grandmaster</span></div>
+    <div class="sec-head" style="margin-top:22px"><h1>PTP</h1><span class="hint" data-tip="IEEE 1588 slave: the device clock follows the selected grandmaster"></span></div>
     <div class="grid">
         <div class="card wide">
             <h2>Analyzer <span class="pill" id="ptp-state">–</span>
@@ -190,7 +187,7 @@
             <div class="big small" id="ptp-time">–</div>
             <div class="sub">Own identity: <span id="ptp-identity">–</span> · domain <span id="ptp-active-domain">–</span> · correction <span id="ptp-offset">–</span> · path delay <span id="ptp-delay">–</span></div>
             <div class="sub" id="ptp-meta" style="display:none"></div>
-            <canvas id="ptp-chart" height="64" class="ptp-chart" title="Correction history (ns, around the mean) - dots: raw measurements, line: servo"></canvas>
+            <canvas id="ptp-chart" height="64" class="ptp-chart" title="Correction history around the mean - dots: raw measurements (timestamp noise), line: servo"></canvas>
             <table class="masters" id="ptp-masters">
                 <thead><tr>
                     <th>BMCA</th><th>Source</th><th>Grandmaster</th><th>P1</th><th>Class</th><th>P2</th><th>Steps</th><th>Net</th><th>Decision</th>
