@@ -1,3 +1,4 @@
-# shows the "Sponsor" button on the repository once the GitHub Sponsors
-# profile is approved; add `custom: ["https://paypal.me/..."]` for PayPal
+# "Sponsor" button on the repository: PayPal now, GitHub Sponsors once the
+# profile is approved
 github: Gemini2350
+custom: ["https://paypal.me/Gemini2350"]

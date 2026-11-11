@@ -190,8 +190,8 @@ cd aes67eleven
         <p class="lead">AES67eleven is free and open source under the MIT license. If it saves you time
            or a hardware purchase, a donation helps keep it maintained across macOS releases.</p>
         <div class="cta" style="justify-content:center">
-            <a class="btn donate" id="donate-sponsors" href="">♥ Sponsor on GitHub</a>
-            <a class="btn" id="donate-paypal" href="">Donate via PayPal</a>
+            <a class="btn" id="donate-sponsors" href="" rel="noopener">♥ Sponsor on GitHub</a>
+            <a class="btn" id="donate-paypal" href="" rel="noopener">Donate via PayPal</a>
         </div>
     </div>
 </section>
@@ -210,12 +210,18 @@ cd aes67eleven
 // the whole support section stays hidden (a dead button is worse than none)
 const DONATE = {
     sponsors: "",   // https://github.com/sponsors/Gemini2350 - once the profile is approved
-    paypal: ""      // https://paypal.me/...
+    paypal: "https://paypal.me/Gemini2350"
 };
 let any = false;
 for (const [key, url] of Object.entries(DONATE)) {
     const el = document.getElementById("donate-" + key);
-    if (url) { el.href = url; any = true; } else { el.style.display = "none"; }
+    if (url) {
+        el.href = url;
+        if (!any) { el.classList.add("donate"); }   //the first available way is the highlighted one
+        any = true;
+    } else {
+        el.style.display = "none";
+    }
 }
 if (!any) {
     document.querySelectorAll("[data-donate-hide]").forEach(el => { el.style.display = "none"; });
