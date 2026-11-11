@@ -323,3 +323,9 @@ canvas { width: 100%; }
 /* player decks as tiles, same raster as the streams page */
 #pl-decks { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
 #pl-decks .pl-deck { margin-bottom: 0; }
+
+/* form footer: hint on the left of a right-aligned primary action */
+.actionbar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.actionbar .sub { margin-top: 0; }
+.grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .grid.two { grid-template-columns: 1fr; } }
