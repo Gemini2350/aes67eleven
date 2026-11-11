@@ -59,6 +59,12 @@ figcaption { color: var(--dim); font-size: 14px; margin-top: 10px; text-align: c
 pre { background: var(--navy); color: #e6ebf3; border-radius: 10px; padding: 14px 16px; overflow-x: auto;
       font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 10px 0 0; }
 .note { color: var(--dim); font-size: 14px; margin-top: 10px; }
+section.pro { padding: 44px 0; background: var(--navy); color: #fff; }
+section.pro .wrap { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+section.pro .wrap > div { flex: 1 1 420px; }
+section.pro h2 { margin-bottom: 6px; }
+section.pro p { color: #c5cedb; max-width: 640px; }
+section.pro .btn { white-space: nowrap; }
 .support { text-align: center; }
 .support .lead { margin: 0 auto 24px; }
 footer { padding: 26px 0 34px; color: var(--dim); font-size: 14px; border-top: 1px solid var(--line); }
@@ -82,6 +88,7 @@ footer .right { margin-left: auto; }
             <a href="#features">Features</a>
             <a href="#screenshots">Screenshots</a>
             <a href="#get">Get it</a>
+            <a href="#help">Professional help</a>
             <a href="#support" data-donate-hide>Support</a>
         </nav>
         <a class="gh" href="https://github.com/Gemini2350/aes67eleven">GitHub ↗</a>
@@ -184,6 +191,17 @@ cd aes67eleven
     </div>
 </section>
 
+<section class="pro" id="help">
+    <div class="wrap">
+        <div>
+            <h2>Need a hand with your AoIP project?</h2>
+            <p>AES67eleven is built by the people behind <strong>Simplexity</strong> — vendor-independent
+               consulting and training for AES67, Dante, SMPTE ST 2110, IPMX, NMOS and PTP, based in Zürich.</p>
+        </div>
+        <a class="btn primary" href="https://simplexity.ch" rel="noopener">Professional help at simplexity.ch ↗</a>
+    </div>
+</section>
+
 <section class="alt support" id="support" data-donate-hide>
     <div class="wrap">
         <h2>Support the project</h2>
@@ -201,6 +219,7 @@ cd aes67eleven
         <span>© 2026 Gemini2350 · MIT license</span>
         <a href="https://github.com/Gemini2350/aes67eleven">GitHub</a>
         <a href="https://github.com/Gemini2350/aes67eleven/issues">Report an issue</a>
+        <a href="https://simplexity.ch" rel="noopener">Simplexity</a>
         <span class="right">AES67eleven is an independent project and not affiliated with the AES.</span>
     </div>
 </footer>
