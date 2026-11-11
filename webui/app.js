@@ -257,14 +257,12 @@ function render() {
          <td>${m.selected ? '<span class="crown">★ Master</span>' : ""}</td>
          <td>${m.port_identity}<br><span class="sub">${m.address}</span></td>
          <td>${m.grandmaster}</td>
-         <td>${m.priority1}</td><td>${m.clock_class}</td><td>0x${m.clock_accuracy.toString(16)}</td>
-         <td>0x${m.variance.toString(16)}</td><td>${m.priority2}</td><td>${m.steps_removed}</td>
-         <td>${m.announces}</td>
+         <td>${m.priority1}</td><td>${m.clock_class}</td><td>${m.priority2}</td><td>${m.steps_removed}</td>
          <td>${m.nets ? (m.nets.amber ? '<span class="pill amber">A</span>' : "") +
                 (m.nets.blue ? ' <span class="pill blue">B</span>' : "") +
                 (m.net_match === false ? ' <span class="pill bad">≠</span>' : "") : ""}</td>
          <td class="sub">${m.bmca}</td></tr>`).join("")
-        || `<tr><td colspan="12" class="sub">no announce messages on domain ${ptp.domain}</td></tr>`;
+        || `<tr><td colspan="9" class="sub">no announce messages on domain ${ptp.domain}</td></tr>`;
     drawChart(ptp.offset_history || []);
 }
 
