@@ -641,6 +641,21 @@ void NmosNode::RegistrationLoop()
                 {
                     sOverride = "http://" + sOverride;
                 }
+                //no port given: 8010, the usual registration api port (and what
+                //the web ui shows as placeholder) - not 80, where a controller's
+                //web ui tends to live
+                {
+                    auto nHost = sOverride.find("://") + 3;
+                    auto nEnd = sOverride.find('/', nHost);
+                    auto sAuthority = sOverride.substr(nHost, nEnd == std::string::npos ? nEnd : nEnd - nHost);
+                    auto nBracket = sAuthority.rfind(']');   //ipv6 literal
+                    auto nColon = sAuthority.rfind(':');
+                    bool bHasPort = nColon != std::string::npos && (nBracket == std::string::npos || nColon > nBracket);
+                    if(!sAuthority.empty() && !bHasPort)
+                    {
+                        sOverride.insert(nHost + sAuthority.size(), ":8010");
+                    }
+                }
                 vRegistries = {{sOverride, 0, ""}};
             }
             else if(++nSinceDiscovery >= 5)

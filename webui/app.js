@@ -749,9 +749,9 @@ setInterval(() => { if ($("page-dashboard").classList.contains("active")) loadNe
 /* ---------- settings ---------- */
 $("set-save").onclick = async () => {
     const regHost = $("set-reg-host").value.trim();
-    const regPort = parseInt($("set-reg-port").value, 10);
-    const override = regHost
-        ? `${$("set-reg-scheme").value}://${regHost}${regPort ? ":" + regPort : ""}` : "";
+    //empty port = 8010, the placeholder shown in the field
+    const regPort = parseInt($("set-reg-port").value, 10) || 8010;
+    const override = regHost ? `${$("set-reg-scheme").value}://${regHost}:${regPort}` : "";
     const updates = {
         "device.label": $("set-label").value,
         "network.interface_primary": $("set-if1").value,
