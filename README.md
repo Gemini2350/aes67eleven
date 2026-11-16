@@ -47,25 +47,37 @@ To build from source instead (Xcode Command Line Tools and CMake):
 
 ## Linux / Docker gateway
 
-A headless playout and monitoring node without a soundcard.
+A headless playout and monitoring node without a soundcard. One command on a
+Linux host fetches the example config, fills in the network interface and the
+hostname, and starts the container:
 
 ```bash
-docker run -d --name aes67eleven \
-  --network host --cap-add SYS_NICE \
-  -v aes67-data:/data \
+mkdir -p ~/aes67eleven && \
+curl -fsSL https://raw.githubusercontent.com/Gemini2350/aes67eleven/main/docker/config.example.json | \
+sed "s/eth0/$(ip route show default | awk '{print $5; exit}')/; s/aes67eleven-gw-1/$(hostname)/" \
+  > ~/aes67eleven/config.json && \
+docker run -d --name aes67eleven --restart unless-stopped \
+  --network host --cap-add SYS_NICE --ulimit rtprio=95 \
+  -v ~/aes67eleven:/data \
   gemini2350/aes67eleven-gw:latest
 ```
+
+Then open `http://<host>:8180`.
+
+- The command picks the interface with the default route. If your media
+  network is on another one, change it in the web UI under "Setup & PTP".
+- It is meant for the first install: running it again overwrites
+  `~/aes67eleven/config.json`. To update, pull the image, remove the container
+  and repeat only the `docker run` part.
+- Host networking is required for multicast, PTP and DNS-SD, so it needs a
+  real Linux host, not Docker Desktop on a Mac.
+- Every host needs its own `device.uuid_seed` in the config; the command sets
+  it to the hostname.
+- Prefer bare metal: PTP is less stable inside a VM.
 
 The image is also on `ghcr.io/gemini2350/aes67eleven-gw`, and
 [`docker/docker-compose.yml`](docker/docker-compose.yml) has the same setup
 for Compose.
-
-- Host networking is required for multicast, PTP and DNS-SD.
-- The config lives in the volume at `/data/config.json`. Start from
-  [`docker/config.example.json`](docker/config.example.json) and give every
-  host its own `uuid_seed`.
-- Web UI on port 8180, NMOS Node API on port 8081.
-- Prefer bare metal: PTP is less stable inside a VM.
 
 ## Where things are
 
@@ -73,7 +85,7 @@ for Compose.
 |---|---|---|
 | Web UI | `http://localhost:8180` | `http://<host>:8180` |
 | NMOS Node API | `http://<ip>:8081/x-nmos/node/v1.3/` | same |
-| Config | `~/Library/Application Support/aes67-vsc/config.json` | `/data/config.json` |
+| Config | `~/Library/Application Support/aes67-vsc/config.json` | `~/aes67eleven/config.json` |
 | Log | `~/Library/Logs/aes67-vsc/daemon.log` | `docker logs aes67eleven` |
 
 ## Limitations
