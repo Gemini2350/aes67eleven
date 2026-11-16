@@ -128,8 +128,11 @@ std::optional<json> pan::nmos::HttpJson(const std::string& sMethod, const std::s
     auto sResponse = HttpText(sMethod, sUrl, pBody ? &sBody : nullptr, nStatus);
     if(!sResponse) { return std::nullopt; }
     if(sResponse->empty()) { return json(); }
-    try { return json::parse(*sResponse); }
-    catch(...) { return json(); }
+    //a body that is not json (a web ui answering any path with its html) is
+    //no answer at all - callers tell a registry from a web server by this
+    auto js = json::parse(*sResponse, nullptr, false);
+    if(js.is_discarded()) { return std::nullopt; }
+    return js;
 }
 
 namespace
