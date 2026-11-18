@@ -133,6 +133,10 @@ servo is hardened against them, but bare metal remains clearly better.
   receivers, sources and flows can be changed by controllers and persist;
   BCP-008-01/-02 monitors with statusReportingDelay per spec; BCP-002-02 asset tags
   (read-only via IS-13).
+- Every resource owns its label, description, tags and IS-04 version: patching
+  one never changes another. Unset labels fall back to fixed names
+  ("AES67eleven sender 1"), they do not follow the device or sender label. New
+  streams are named once when they are created.
 - IS-13 test suite (garethsb `is-13-annotation-tests`): **0 fails**.
 
 ## Verification

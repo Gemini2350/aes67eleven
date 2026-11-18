@@ -158,6 +158,48 @@ namespace
             }
             if(bChanged) { Config::Get().SetValue(sKey, jsStreams); }
         }
+        //annotations: every nmos resource owns its label/description/tags.
+        //older versions shared them between node and device and derived the
+        //stream labels from the device label at runtime. write down, once,
+        //what those resources were showing - nothing is renamed by the
+        //update, and from here on no label follows another one
+        if(!Config::Get().GetValue<bool>("nmos.annotations_per_resource", false))
+        {
+            auto jsNow = Config::Get().GetJson();
+            json jsDevice = jsNow.contains("device") && jsNow["device"].is_object() ? jsNow["device"] : json::object();
+            if(!jsNow.contains("node"))
+            {
+                Config::Get().SetValue("node", json{{"label", jsDevice.value("label", "")},
+                                                    {"description", jsDevice.value("description", "")},
+                                                    {"tags", jsDevice.value("tags", json::object())}});
+            }
+            auto sDevice = jsDevice.value("label", "");
+            if(sDevice.empty()) { sDevice = "AES67eleven"; }
+            auto jsSenders = StreamArray("senders");
+            for(size_t n = 0; n < jsSenders.size(); n++)
+            {
+                auto sNumber = std::to_string(n+1);
+                auto sSender = jsSenders[n].value("label", "");
+                if(jsSenders[n].value("source_label", "").empty())
+                {
+                    jsSenders[n]["source_label"] = (sSender.empty() ? sDevice + " " + sNumber : sSender) + " source";
+                }
+                if(jsSenders[n].value("flow_label", "").empty()) { jsSenders[n]["flow_label"] = sDevice + " flow " + sNumber; }
+                if(sSender.empty()) { jsSenders[n]["label"] = sDevice + " sender " + sNumber; }
+            }
+            if(!jsSenders.empty()) { Config::Get().SetValue("senders", jsSenders); }
+            auto jsReceivers = StreamArray("receivers");
+            for(size_t n = 0; n < jsReceivers.size(); n++)
+            {
+                if(jsReceivers[n].value("label", "").empty())
+                {
+                    jsReceivers[n]["label"] = sDevice + " receiver " + std::to_string(n+1);
+                }
+            }
+            if(!jsReceivers.empty()) { Config::Get().SetValue("receivers", jsReceivers); }
+            Config::Get().SetValue("nmos.annotations_per_resource", true);
+            LOG_INFO("main") << "annotations migrated: one label/description/tags set per resource";
+        }
     }
 
     void ApplySender(size_t n, rtp::RtpSender& sender, TxTap* pTap, const std::string& sFilesDir)
@@ -614,6 +656,8 @@ int main(int argc, char** argv)
             auto jsSender = vSenders[n]->GetStatusJson();
             jsSender["index"] = n;
             jsSender["id"] = node.SenderCount() > n ? node.SenderId(n) : "";
+            jsSender["source_id"] = node.SenderCount() > n ? node.SourceId(n) : "";
+            jsSender["flow_id"] = node.SenderCount() > n ? node.FlowId(n) : "";
             jsSender["channel_map"] = vTxTaps[n]->Map();
             jsSender["tap_fill"] = vTxTaps[n]->FillFrames();
             jsSender["tap_underruns"] = vTxTaps[n]->Underruns();
@@ -715,12 +759,22 @@ int main(int argc, char** argv)
             json jsEntry = {{"uid", sUid},
                             {"channels", std::clamp(jsBody.value("channels", 8), 1, int(kMaxStreamChannels))},
                             {"channel_offset", jsBody.value("channel_offset", 0)}};
+            //a new stream gets its names once, here. they are stored like any
+            //other label and do not follow the device label afterwards
+            auto sStreamLabel = jsBody.value("label", "");
+            if(sStreamLabel.empty())
+            {
+                auto sDevice = Config::Get().GetValue<std::string>("device.label", "");
+                sStreamLabel = (sDevice.empty() ? "AES67eleven" : sDevice) + " " + sType + " " + std::to_string(nIndex + 1);
+            }
             if(jsBody.contains("channel_map")) { jsEntry["channel_map"] = jsBody["channel_map"]; }
             if(sType == "sender")
             {
                 jsEntry["enabled"] = jsBody.value("enabled", false);
                 jsEntry["source"] = "device";
-                jsEntry["label"] = jsBody.value("label", "");
+                jsEntry["label"] = sStreamLabel;
+                jsEntry["source_label"] = sStreamLabel + " source";
+                jsEntry["flow_label"] = sStreamLabel + " flow";
                 jsEntry["bits"] = jsBody.value("bits", 24);
                 jsEntry["port"] = 5004;
                 jsEntry["packet_time_us"] = 1000;
@@ -731,6 +785,10 @@ int main(int argc, char** argv)
                 jsEntry["multicast_loop"] = true;
                 jsEntry["leg1_enabled"] = true;
                 jsEntry["leg2_enabled"] = true;
+            }
+            else
+            {
+                jsEntry["label"] = sStreamLabel;
             }
             jsStreams.push_back(jsEntry);
             Config::Get().SetValue(sKey, jsStreams);
@@ -1045,6 +1103,7 @@ int main(int argc, char** argv)
                           }
                       }
                       if(sKey.rfind("monitor.", 0) == 0) { bMonitorChanged = true; }
+                      if(sKey.rfind("device.", 0) == 0 || sKey.rfind("node.", 0) == 0) { bBump = true; }
                       if(sKey == "ptp.domain") { ptpClient.SetDomain(jsValue.get<int>()); }
                       if(sKey == "ptp.domain_auto") { ptpClient.SetAutoDomain(jsValue.get<bool>()); }
                       if(sKey == "receiver.monitor_left" || sKey == "receiver.monitor_right")

@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -70,7 +71,7 @@ namespace pan::nmos
             nlohmann::json GetStatusJson() const;
             Is12Server* GetIs12() { return m_pIs12.get(); }
             ConnectionApi* GetConnection() { return m_pConnection.get(); }
-            void BumpVersion();     //resource change -> re-register
+            void BumpVersion();     //something changed -> wake the registration loop
 
             //resource builders (also served by the node api)
             nlohmann::json BuildSelf() const;
@@ -93,10 +94,11 @@ namespace pan::nmos
         private:
             void StopLocked();
             void RegistrationLoop();
-            bool RegisterAll(const std::string& sRegistryUrl);
+            bool RegisterAll(const std::string& sRegistryUrl, bool bOnlyChanged);
             void RegisterNodeApi();
             void RegisterAnnotationApi();
-            std::string Version() const;
+            nlohmann::json& Stamp(nlohmann::json& js) const;    //sets the per-resource version
+            void Touch(const std::string& sId);                 //force a new version
 
             ptp::PtpClient& m_ptp;
             std::vector<std::unique_ptr<rtp::RtpSender>>& m_vSenders;
@@ -115,9 +117,13 @@ namespace pan::nmos
             std::thread m_regThread;
             std::mutex m_lifecycleMutex;    //Start/Stop may race (web action vs retry)
             std::atomic<bool> m_bRun{false};
-            std::atomic<uint64_t> m_nVersion{0};
-            std::atomic<uint64_t> m_nVersionTime{uint64_t(time(nullptr))};
+            std::atomic<uint64_t> m_nVersion{0};            //wake counter, not a resource version
             std::atomic<uint64_t> m_nRegisteredVersion{0};
+            struct ResourceStamp { std::string sContent, sVersion; };
+            mutable std::mutex m_stampMutex;
+            mutable std::map<std::string, ResourceStamp> m_mapStamps;   //by resource id
+            mutable uint64_t m_nLastStamp = 0;
+            std::map<std::string, std::string> m_mapRegistered;         //id -> version the registry has (reg thread only)
             mutable std::mutex m_mutex;
             std::string m_sRegistry;        //current registry url or empty
             std::string m_sRegistryStatus;  //for the ui

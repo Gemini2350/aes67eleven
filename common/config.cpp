@@ -38,7 +38,7 @@ namespace
                 json js = json::array();
                 js.push_back({
                     {"uid", "legacy"},              //pre-v2 ids stay valid
-                    {"label", ""},                  //empty = "<device label> sender 1"
+                    {"label", ""},                  //named once at first start / creation
                     {"enabled", false},
                     {"source", "device"},           //device | tone | sweep | file
                     {"tone_hz", 440.0},

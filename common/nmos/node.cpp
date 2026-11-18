@@ -196,17 +196,43 @@ NmosNode::~NmosNode()
     Stop();
 }
 
-std::string NmosNode::Version() const
+json& NmosNode::Stamp(json& js) const
 {
-    //the timestamp is captured when the resource last CHANGED (BumpVersion),
-    //not at read time - is-04 requires the version to be stable between
-    //changes, and the is-13 tests verify patch response == node api version
-    return std::to_string(m_nVersionTime.load()) + ":" + std::to_string(m_nVersion.load() % 1000000000);
+    //is-04: a resource's version changes when - and only when - that resource
+    //changes. every resource keeps its own version, derived from its content:
+    //patching one never touches the version of another, and the version is
+    //stable between changes (the is-13 tests verify patch response == node api)
+    js.erase("version");
+    auto sContent = js.dump();
+    std::lock_guard<std::mutex> lg(m_stampMutex);
+    auto& stamp = m_mapStamps[js.value("id", "")];
+    if(stamp.sVersion.empty() || stamp.sContent != sContent)
+    {
+        timespec ts{};
+        clock_gettime(CLOCK_REALTIME, &ts);
+        uint64_t nNow = uint64_t(ts.tv_sec) * 1000000000ULL + uint64_t(ts.tv_nsec);
+        if(nNow <= m_nLastStamp) { nNow = m_nLastStamp + 1; }  //strictly increasing
+        m_nLastStamp = nNow;
+        stamp.sContent = sContent;
+        stamp.sVersion = std::to_string(nNow / 1000000000ULL) + ":" + std::to_string(nNow % 1000000000ULL);
+    }
+    js["version"] = stamp.sVersion;
+    return js;
+}
+
+void NmosNode::Touch(const std::string& sId)
+{
+    //an accepted patch always yields a new version, even when it set the
+    //values the resource already had
+    std::lock_guard<std::mutex> lg(m_stampMutex);
+    m_mapStamps[sId].sContent.clear();
+    m_mapStamps[sId].sVersion.clear();
 }
 
 void NmosNode::BumpVersion()
 {
-    m_nVersionTime = uint64_t(time(nullptr));
+    //something changed: wake the registration loop. which resources actually
+    //differ is decided there, per resource (see RegisterAll)
     m_nVersion++;
 }
 
@@ -279,14 +305,15 @@ namespace
 
 json NmosNode::BuildSelf() const
 {
-    auto sLabel = Config::Get().GetValue<std::string>("device.label", "");
+    //the node keeps its own annotations ("node.*") - they are not shared with
+    //the device, is-13 clients set each resource independently
+    auto sLabel = Config::Get().GetValue<std::string>("node.label", "");
     if(sLabel.empty()) { sLabel = "AES67eleven"; }
     json js;
     js["id"] = m_sNodeId;
-    js["version"] = Version();
     js["label"] = sLabel;
-    js["description"] = Config::Get().GetValue<std::string>("device.description", "");
-    js["tags"] = Config::Get().GetValue<json>("device.tags", json::object());
+    js["description"] = Config::Get().GetValue<std::string>("node.description", "");
+    js["tags"] = Config::Get().GetValue<json>("node.tags", json::object());
     MergeAssetTags(js["tags"]);
     js["hostname"] = m_sHostname;
     js["caps"] = json::object();
@@ -323,14 +350,13 @@ json NmosNode::BuildSelf() const
     }
     js["href"] = js["api"]["endpoints"].empty() ? "" :
         "http://" + js["api"]["endpoints"][0]["host"].get<std::string>() + ":" + std::to_string(m_nPort);
-    return js;
+    return Stamp(js);
 }
 
 json NmosNode::BuildDevice() const
 {
     json js;
     js["id"] = m_sDeviceId;
-    js["version"] = Version();
     {
         auto sDeviceLabel = Config::Get().GetValue<std::string>("device.label", "");
         js["label"] = sDeviceLabel.empty() ? "AES67eleven" : sDeviceLabel;
@@ -353,17 +379,12 @@ json NmosNode::BuildDevice() const
         js["controls"].push_back({{"type", "urn:x-nmos:control:ncp/v1.0"},
                                   {"href", "ws://"+sIp+":"+std::to_string(m_nPort)+"/x-nmos/ncp/v1.0"}});
     }
-    return js;
+    return Stamp(js);
 }
 
 json NmosNode::BuildSource(size_t n) const
 {
     auto jsSender = SenderConfig(n);
-    auto sLabel = jsSender.value("label", "");
-    if(sLabel.empty())
-    {
-        sLabel = Config::Get().GetValue<std::string>("device.label", "AES67eleven") + " " + std::to_string(n+1);
-    }
     int nChannels = jsSender.value("channels", 8);
     int nOffset = jsSender.value("channel_offset", int(n)*8);
     //channel_map (matrix routing) wins over the contiguous offset
@@ -379,9 +400,9 @@ json NmosNode::BuildSource(size_t n) const
 
     json js;
     js["id"] = m_vSourceIds[n];
-    js["version"] = Version();
+    //defaults are fixed names: a label never follows another resource's label
     auto sSourceLabel = jsSender.value("source_label", "");
-    js["label"] = sSourceLabel.empty() ? sLabel + " source" : sSourceLabel;
+    js["label"] = sSourceLabel.empty() ? "AES67eleven source " + std::to_string(n+1) : sSourceLabel;
     js["description"] = jsSender.value("source_description", "");
     js["tags"] = jsSender.value("source_tags", json::object());
     js["device_id"] = m_sDeviceId;
@@ -398,7 +419,7 @@ json NmosNode::BuildSource(size_t n) const
         js["channels"].push_back({{"label", "Ch " + std::to_string(vMap[nCh]+1)},
                                   {"symbol", sSymbol}});
     }
-    return js;
+    return Stamp(js);
 }
 
 json NmosNode::BuildFlow(size_t n) const
@@ -406,10 +427,8 @@ json NmosNode::BuildFlow(size_t n) const
     auto jsSender = SenderConfig(n);
     json js;
     js["id"] = m_vFlowIds[n];
-    js["version"] = Version();
     auto sFlowLabel = jsSender.value("flow_label", "");
-    js["label"] = sFlowLabel.empty() ?
-        Config::Get().GetValue<std::string>("device.label", "AES67eleven") + " flow " + std::to_string(n+1) : sFlowLabel;
+    js["label"] = sFlowLabel.empty() ? "AES67eleven flow " + std::to_string(n+1) : sFlowLabel;
     js["description"] = jsSender.value("flow_description", "");
     js["tags"] = jsSender.value("flow_tags", json::object());
     js["device_id"] = m_sDeviceId;
@@ -419,21 +438,17 @@ json NmosNode::BuildFlow(size_t n) const
     js["media_type"] = jsSender.value("bits", 24) == 16 ? "audio/L16" : "audio/L24";
     js["sample_rate"] = {{"numerator", 48000}};
     js["bit_depth"] = jsSender.value("bits", 24);
-    return js;
+    return Stamp(js);
 }
 
 json NmosNode::BuildSender(size_t n) const
 {
     auto jsSender = SenderConfig(n);
     auto sLabel = jsSender.value("label", "");
-    if(sLabel.empty())
-    {
-        sLabel = Config::Get().GetValue<std::string>("device.label", "AES67eleven") + " sender " + std::to_string(n+1);
-    }
+    if(sLabel.empty()) { sLabel = "AES67eleven sender " + std::to_string(n+1); }
 
     json js;
     js["id"] = m_vSenderIds[n];
-    js["version"] = Version();
     js["label"] = sLabel;
     js["description"] = jsSender.value("description", "");
     js["tags"] = jsSender.value("tags", json::object());
@@ -445,7 +460,7 @@ json NmosNode::BuildSender(size_t n) const
     js["manifest_href"] = vIps.empty() ? "" :
         "http://"+vIps[0]+":"+std::to_string(m_nPort)+"/x-nmos/connection/v1.1/single/senders/"+m_vSenderIds[n]+"/transportfile";
     js["subscription"] = {{"receiver_id", nullptr}, {"active", m_vSenders[n]->IsRunning()}};
-    return js;
+    return Stamp(js);
 }
 
 json NmosNode::BuildReceiver(size_t n) const
@@ -460,12 +475,8 @@ json NmosNode::BuildReceiver(size_t n) const
         }
     }
     auto sLabel = jsReceiver.value("label", "");
-    if(sLabel.empty())
-    {
-        sLabel = Config::Get().GetValue<std::string>("device.label", "AES67eleven") + " receiver " + std::to_string(n+1);
-    }
+    if(sLabel.empty()) { sLabel = "AES67eleven receiver " + std::to_string(n+1); }
     js["id"] = m_vReceiverIds[n];
-    js["version"] = Version();
     js["label"] = sLabel;
     js["description"] = jsReceiver.value("description", "");
     js["tags"] = jsReceiver.value("tags", json::object());
@@ -481,10 +492,12 @@ json NmosNode::BuildReceiver(size_t n) const
     jsConstraints["urn:x-nmos:cap:format:channel_count"] = {{"minimum", 1}, {"maximum", 8}};
     jsConstraints["urn:x-nmos:cap:transport:packet_time"] = {{"minimum", 0.125}, {"maximum", 4.0}};
     js["caps"]["constraint_sets"] = json::array({jsConstraints});
-    js["caps"]["version"] = Version();
+    //the caps never change at runtime - their version must not either
+    static const std::string sCapsVersion = std::to_string(time(nullptr)) + ":0";
+    js["caps"]["version"] = sCapsVersion;
     js["subscription"] = {{"sender_id", m_pConnection ? m_pConnection->ReceiverSenderId(n) : json()},
                           {"active", m_vReceivers[n]->IsRunning()}};
-    return js;
+    return Stamp(js);
 }
 
 bool NmosNode::Start(int nPort, const std::vector<std::string>& vInterfaces, Callbacks callbacks)
@@ -582,10 +595,22 @@ void NmosNode::StopLocked()
     m_pIs12.reset();
 }
 
-bool NmosNode::RegisterAll(const std::string& sRegistryUrl)
+bool NmosNode::RegisterAll(const std::string& sRegistryUrl, bool bOnlyChanged)
 {
+    //m_mapRegistered remembers the version the registry acknowledged for each
+    //resource. a resource is posted whenever its current version differs -
+    //comparing what was actually SENT, so a change that lands while a pass is
+    //running is simply picked up by the next one instead of getting lost
+    if(!bOnlyChanged) { m_mapRegistered.clear(); }
     auto Post = [&](const std::string& sType, const json& jsData) -> bool
     {
+        auto sId = jsData.value("id", "");
+        auto sVersion = jsData.value("version", "");
+        if(bOnlyChanged)
+        {
+            auto itRegistered = m_mapRegistered.find(sId);
+            if(itRegistered != m_mapRegistered.end() && itRegistered->second == sVersion) { return true; }
+        }
         json jsBody = {{"type", sType}, {"data", jsData}};
         int nStatus = 0;
         auto jsResponse = HttpJson("POST", sRegistryUrl + "/x-nmos/registration/v1.3/resource", &jsBody, nStatus);
@@ -594,7 +619,7 @@ bool NmosNode::RegisterAll(const std::string& sRegistryUrl)
             //a registration api always answers with the resource as json. a
             //web server (spa fallback) answers any path with 200 + html - do
             //not let that masquerade as a successful registration
-            if(jsResponse) { return true; }
+            if(jsResponse) { m_mapRegistered[sId] = sVersion; return true; }
             LOG_WARN("nmos") << "register " << sType << " -> " << nStatus
                              << " without json - that url is not a registration api (web ui?)";
             return false;
@@ -666,13 +691,14 @@ void NmosNode::RegistrationLoop()
 
             for(const auto& registry : vRegistries)
             {
-                if(RegisterAll(registry.sUrl))
+                auto nWake = m_nVersion.load();
+                if(RegisterAll(registry.sUrl, false))
                 {
                     std::lock_guard<std::mutex> lg(m_mutex);
                     m_sRegistry = registry.sUrl;
                     m_sRegistryStatus = "registered";
                     bRegistered = true;
-                    m_nRegisteredVersion = m_nVersion.load();
+                    m_nRegisteredVersion = nWake;
                     LOG_INFO("nmos") << "registered with " << registry.sUrl;
                     break;
                 }
@@ -692,6 +718,9 @@ void NmosNode::RegistrationLoop()
                 std::lock_guard<std::mutex> lg(m_mutex);
                 sRegistry = m_sRegistry;
             }
+            //read the wake counter BEFORE the pass: a bump during the pass
+            //must leave it "dirty" so the loop comes straight back
+            auto nWake = m_nVersion.load();
             int nStatus = 0;
             json jsEmpty = json::object();
             auto jsHealth = HttpJson("POST", sRegistry + "/x-nmos/registration/v1.3/health/nodes/" + m_sNodeId,
@@ -702,7 +731,8 @@ void NmosNode::RegistrationLoop()
             }
             if(nStatus == 404)
             {
-                bRegistered = RegisterAll(sRegistry);   //registry lost us - re-register
+                bRegistered = RegisterAll(sRegistry, false);    //registry lost us - re-register
+                m_nRegisteredVersion = nWake;
             }
             else if(nStatus < 200 || nStatus >= 300)
             {
@@ -710,9 +740,12 @@ void NmosNode::RegistrationLoop()
                 bRegistered = false;
                 nSinceDiscovery = 999;
             }
-            else if(m_nVersion.load() != m_nRegisteredVersion.load())
+            else
             {
-                if(RegisterAll(sRegistry)) { m_nRegisteredVersion = m_nVersion.load(); }
+                //every cycle, not only after a bump: whatever differs from what
+                //the registry holds gets posted, a failed post is retried
+                RegisterAll(sRegistry, true);
+                m_nRegisteredVersion = nWake;
             }
         }
 
@@ -845,37 +878,38 @@ void NmosNode::RegisterAnnotationApi()
         //locate the addressed resource: kind + config key prefix + builder.
         //source and flow annotations live on their sender entry (source_* /
         //flow_* fields) - they share its lifetime like the is-04 resources do
-        std::string sKind, sPrefix, sField;
+        std::string sKind, sPrefix, sField, sId;
         size_t nIndex = 0;
         auto Resolve = [&]() -> bool
         {
             const std::string sBase = "/x-nmos/annotation/v1.0/node";
-            if(sUri == sBase + "/self")    { sKind = "self";   sPrefix = "device"; return true; }
+            //node and device each have their own storage - never shared
+            if(sUri == sBase + "/self")    { sKind = "self"; sPrefix = "node"; sId = pNode->NodeId(); return true; }
             if(sUri.rfind(sBase + "/devices/", 0) == 0 && sUri.substr(sBase.size()+9) == pNode->DeviceId())
             {
-                sKind = "device"; sPrefix = "device"; return true;
+                sKind = "device"; sPrefix = "device"; sId = pNode->DeviceId(); return true;
             }
             for(size_t n = 0; n < pNode->SenderCount(); n++)
             {
                 auto sSenders = "senders." + std::to_string(n);
                 if(sUri == sBase + "/senders/" + pNode->SenderId(n))
                 {
-                    sKind = "sender"; sPrefix = sSenders; nIndex = n; return true;
+                    sKind = "sender"; sPrefix = sSenders; nIndex = n; sId = pNode->SenderId(n); return true;
                 }
                 if(sUri == sBase + "/sources/" + pNode->SourceId(n))
                 {
-                    sKind = "source"; sPrefix = sSenders; sField = "source_"; nIndex = n; return true;
+                    sKind = "source"; sPrefix = sSenders; sField = "source_"; nIndex = n; sId = pNode->SourceId(n); return true;
                 }
                 if(sUri == sBase + "/flows/" + pNode->FlowId(n))
                 {
-                    sKind = "flow"; sPrefix = sSenders; sField = "flow_"; nIndex = n; return true;
+                    sKind = "flow"; sPrefix = sSenders; sField = "flow_"; nIndex = n; sId = pNode->FlowId(n); return true;
                 }
             }
             for(size_t n = 0; n < pNode->ReceiverCount(); n++)
             {
                 if(sUri == sBase + "/receivers/" + pNode->ReceiverId(n))
                 {
-                    sKind = "receiver"; sPrefix = "receivers." + std::to_string(n); nIndex = n; return true;
+                    sKind = "receiver"; sPrefix = "receivers." + std::to_string(n); nIndex = n; sId = pNode->ReceiverId(n); return true;
                 }
             }
             return false;
@@ -1010,7 +1044,8 @@ void NmosNode::RegisterAnnotationApi()
             }
             Config::Get().SetValue(sPrefix + "." + sField + "tags", jsTags);
         }
-        pNode->BumpVersion();   //re-registers the changed resources
+        pNode->Touch(sId);      //new version for this resource - and only this one
+        pNode->BumpVersion();   //wake the registration loop
         LOG_INFO("nmos") << "annotation patch on " << sKind << " - " << sBody.substr(0, 200);
         SendJsonCors(pConn, 200, Build(), METHODS_RW);
         return 200;

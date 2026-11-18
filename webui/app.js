@@ -752,8 +752,11 @@ $("set-save").onclick = async () => {
     //empty port = 8010, the placeholder shown in the field
     const regPort = parseInt($("set-reg-port").value, 10) || 8010;
     const override = regHost ? `${$("set-reg-scheme").value}://${regHost}:${regPort}` : "";
+    //one name field for the unit: it sets the node label and the device label
+    //(two separate nmos annotations - controllers may still change either one)
     const updates = {
         "device.label": $("set-label").value,
+        "node.label": $("set-label").value,
         "network.interface_primary": $("set-if1").value,
         "network.interface_secondary": $("set-if2").value,
         "receiver.playout_delay_ms": parseInt($("set-delay").value, 10),
@@ -960,17 +963,33 @@ function firstFreeStart(list, channels) {
     return 0;
 }
 
-/* labels go through IS-13 (persists + updates the registry without restarting the stream) */
+/* labels go through IS-13 (persists + updates the registry without restarting the stream).
+   every nmos resource has its own label, so renaming a sender tile names its
+   source and flow explicitly as well - the node does not derive one from another */
 async function setStreamLabel(kind, s, label) {
     const port = (status.nmos || {}).port || 8081;
-    try {
-        const r = await fetch(`http://${location.hostname}:${port}/x-nmos/annotation/v1.0/node/${kind.key}/${s.id}`, {
+    const base = `http://${location.hostname}:${port}/x-nmos/annotation/v1.0/node`;
+    const patch = async (path, value) => {
+        const r = await fetch(`${base}/${path}`, {
             method: "PATCH", headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({label: label || null})
+            body: JSON.stringify({label: value || null})
         });
         if (!r.ok) throw new Error("annotation api");
+    };
+    const withSuffix = suffix => label ? `${label} ${suffix}` : "";
+    try {
+        await patch(`${kind.key}/${s.id}`, label);
+        if (kind.type === "sender") {
+            if (s.source_id) await patch(`sources/${s.source_id}`, withSuffix("source"));
+            if (s.flow_id) await patch(`flows/${s.flow_id}`, withSuffix("flow"));
+        }
     } catch (e) {
-        await setConfig({[`${kind.key}.${s.index}.label`]: label});
+        const updates = {[`${kind.key}.${s.index}.label`]: label};
+        if (kind.type === "sender") {
+            updates[`${kind.key}.${s.index}.source_label`] = withSuffix("source");
+            updates[`${kind.key}.${s.index}.flow_label`] = withSuffix("flow");
+        }
+        await setConfig(updates);
     }
 }
 
