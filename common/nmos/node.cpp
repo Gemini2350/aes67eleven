@@ -281,24 +281,30 @@ namespace
     //BCP-002-02 asset distinguishing information: read-only inventory tags on
     //self and device. merged AFTER the user tags so they cannot be shadowed,
     //and the annotation api refuses to modify them (500, per IS-13).
-    json AssetTags()
+    //the tag names carry the spec version ("/v1.0"); manufacturer, product and
+    //instance-id go on node and device, function describes a device only.
+    json AssetTags(bool bDevice)
     {
         auto sInstance = pan::Config::Get().GetValue<std::string>("device.uuid_seed", "");
-        auto sFunction = pan::Config::Get().GetValue<std::string>("device.asset_function", "AES67 Virtual Soundcard");
-        return {{"urn:x-nmos:tag:asset:manufacturer", {"Gemini2350"}},
-                {"urn:x-nmos:tag:asset:product", {"AES67eleven"}},
-                {"urn:x-nmos:tag:asset:instance-id", {sInstance}},
-                {"urn:x-nmos:tag:asset:function", {sFunction}}};
+        json js = {{"urn:x-nmos:tag:asset:manufacturer/v1.0", {"Gemini2350"}},
+                   {"urn:x-nmos:tag:asset:product/v1.0", {"AES67eleven"}},
+                   {"urn:x-nmos:tag:asset:instance-id/v1.0", {sInstance}}};
+        if(bDevice)
+        {
+            js["urn:x-nmos:tag:asset:function/v1.0"] =
+                {pan::Config::Get().GetValue<std::string>("device.asset_function", "AES67 Virtual Soundcard")};
+        }
+        return js;
     }
     bool IsReadOnlyTag(const std::string& sName)
     {
         return sName.rfind("urn:x-nmos:tag:grouphint/", 0) == 0 ||
                sName.rfind("urn:x-nmos:tag:asset:", 0) == 0;
     }
-    void MergeAssetTags(json& jsTags)
+    void MergeAssetTags(json& jsTags, bool bDevice)
     {
         //items() on a temporary dangles - keep the json alive for the loop
-        auto jsAsset = AssetTags();
+        auto jsAsset = AssetTags(bDevice);
         for(auto& [sKey, jsValue] : jsAsset.items()) { jsTags[sKey] = jsValue; }
     }
 }
@@ -314,7 +320,7 @@ json NmosNode::BuildSelf() const
     js["label"] = sLabel;
     js["description"] = Config::Get().GetValue<std::string>("node.description", "");
     js["tags"] = Config::Get().GetValue<json>("node.tags", json::object());
-    MergeAssetTags(js["tags"]);
+    MergeAssetTags(js["tags"], /*bDevice*/ false);
     js["hostname"] = m_sHostname;
     js["caps"] = json::object();
     js["api"]["versions"] = {"v1.3"};
@@ -366,7 +372,7 @@ json NmosNode::BuildDevice() const
         js["description"] = sDescription.empty() ? "AES67 sender/receiver" : sDescription;
     }
     js["tags"] = Config::Get().GetValue<json>("device.tags", json::object());
-    MergeAssetTags(js["tags"]);
+    MergeAssetTags(js["tags"], /*bDevice*/ true);
     js["type"] = "urn:x-nmos:device:generic";
     js["node_id"] = m_sNodeId;
     js["senders"] = m_vSenderIds;
@@ -969,47 +975,55 @@ void NmosNode::RegisterAnnotationApi()
             return 200;
         }
 
+        //limits (IS-13 "additional limitations" asks for at least 64 bytes, one
+        //tag, one value): sizes are bytes of utf-8. a request beyond them is
+        //one this node "cannot process" - the spec's answer for that is 500
+        constexpr size_t kMaxBytes = 1024;          //label, description, tag name, tag value
+        constexpr size_t kMaxTags = 32;             //user tags per resource
+        constexpr size_t kMaxTagValues = 16;        //values per tag
+        constexpr size_t kMaxBody = 1024 * 1024;    //patch request body
+        auto Reject = [&](int nCode, const std::string& sError) -> int
+        {
+            SendJsonCors(pConn, nCode, {{"code", nCode}, {"error", sError}, {"debug", nullptr}}, METHODS_RW);
+            return 200;
+        };
+        auto sLimit = " (limit " + std::to_string(kMaxBytes) + " bytes of utf-8)";
+
         std::string sBody;
         char buffer[8192];
         int nRead;
-        while((nRead = mg_read(pConn, buffer, sizeof(buffer))) > 0) { sBody.append(buffer, size_t(nRead)); }
-        json jsPatch = json::parse(sBody, nullptr, false);
-        if(jsPatch.is_discarded() || !jsPatch.is_object())
+        while((nRead = mg_read(pConn, buffer, sizeof(buffer))) > 0)
         {
-            SendJsonCors(pConn, 400, {{"code", 400}, {"error", "body must be a json object"}, {"debug", nullptr}}, METHODS_RW);
-            return 200;
+            sBody.append(buffer, size_t(nRead));
+            if(sBody.size() > kMaxBody) { return Reject(500, "request body too large"); }
         }
+        json jsPatch = json::parse(sBody, nullptr, false);
+        if(jsPatch.is_discarded() || !jsPatch.is_object()) { return Reject(400, "body must be a json object"); }
         for(const auto& [sKey, jsValue] : jsPatch.items())
         {
-            if(sKey != "label" && sKey != "description" && sKey != "tags")
-            {
-                SendJsonCors(pConn, 400, {{"code", 400}, {"error", "unknown field: " + sKey}, {"debug", nullptr}}, METHODS_RW);
-                return 200;
-            }
+            if(sKey != "label" && sKey != "description" && sKey != "tags") { return Reject(400, "unknown field: " + sKey); }
         }
+
+        //validate the whole request first, store afterwards: a rejected patch
+        //must not leave half of itself behind
         for(const char* sFieldName : {"label", "description"})
         {
             if(!jsPatch.contains(sFieldName)) { continue; }
-            if(!jsPatch[sFieldName].is_string() && !jsPatch[sFieldName].is_null())
+            const auto& jsValue = jsPatch[sFieldName];
+            if(!jsValue.is_string() && !jsValue.is_null()) { return Reject(400, std::string(sFieldName) + " must be string or null"); }
+            if(jsValue.is_string() && jsValue.get_ref<const std::string&>().size() > kMaxBytes)
             {
-                SendJsonCors(pConn, 400, {{"code", 400}, {"error", std::string(sFieldName) + " must be string or null"}, {"debug", nullptr}}, METHODS_RW);
-                return 200;
+                return Reject(500, std::string(sFieldName) + " too long" + sLimit);
             }
-            //null resets to the default - builders fall back on empty values
-            Config::Get().SetValue(sPrefix + "." + sField + sFieldName,
-                                   jsPatch[sFieldName].is_null() ? "" : jsPatch[sFieldName].get<std::string>());
         }
+        json jsTags;
         if(jsPatch.contains("tags"))
         {
-            if(!jsPatch["tags"].is_object() && !jsPatch["tags"].is_null())
-            {
-                SendJsonCors(pConn, 400, {{"code", 400}, {"error", "tags must be object or null"}, {"debug", nullptr}}, METHODS_RW);
-                return 200;
-            }
+            if(!jsPatch["tags"].is_object() && !jsPatch["tags"].is_null()) { return Reject(400, "tags must be object or null"); }
             //per the patch schema: every tag is an array of STRINGS (or null =
             //delete that tag); tags null resets the whole set. keys merge into
             //the stored tags rather than replacing them wholesale.
-            json jsTags = Config::Get().GetValue<json>(sPrefix + "." + sField + "tags", json::object());
+            jsTags = Config::Get().GetValue<json>(sPrefix + "." + sField + "tags", json::object());
             if(!jsTags.is_object()) { jsTags = json::object(); }
             if(jsPatch["tags"].is_null())
             {
@@ -1019,31 +1033,40 @@ void NmosNode::RegisterAnnotationApi()
             {
                 for(const auto& [sTag, jsValues] : jsPatch["tags"].items())
                 {
-                    if(IsReadOnlyTag(sTag))
-                    {
-                        //bcp-002 group hints and asset info are not user tags
-                        SendJsonCors(pConn, 500, {{"code", 500}, {"error", "tag " + sTag + " is read-only"}, {"debug", nullptr}}, METHODS_RW);
-                        return 200;
-                    }
+                    //bcp-002 group hints and asset info are not user tags
+                    if(IsReadOnlyTag(sTag)) { return Reject(500, "tag " + sTag + " is read-only"); }
                     if(jsValues.is_null()) { jsTags.erase(sTag); continue; }
-                    if(!jsValues.is_array())
+                    if(!jsValues.is_array()) { return Reject(400, "tag values must be an array of strings"); }
+                    if(sTag.size() > kMaxBytes) { return Reject(500, "tag name too long" + sLimit); }
+                    if(jsValues.size() > kMaxTagValues)
                     {
-                        SendJsonCors(pConn, 400, {{"code", 400}, {"error", "tag values must be an array of strings"}, {"debug", nullptr}}, METHODS_RW);
-                        return 200;
+                        return Reject(500, "too many values for tag " + sTag + " (limit " + std::to_string(kMaxTagValues) + ")");
                     }
                     for(const auto& jsItem : jsValues)
                     {
-                        if(!jsItem.is_string())
+                        if(!jsItem.is_string()) { return Reject(400, "tag values must be strings"); }
+                        if(jsItem.get_ref<const std::string&>().size() > kMaxBytes)
                         {
-                            SendJsonCors(pConn, 400, {{"code", 400}, {"error", "tag values must be strings"}, {"debug", nullptr}}, METHODS_RW);
-                            return 200;
+                            return Reject(500, "value of tag " + sTag + " too long" + sLimit);
                         }
                     }
                     jsTags[sTag] = jsValues;
                 }
+                if(jsTags.size() > kMaxTags)
+                {
+                    return Reject(500, "too many tags (limit " + std::to_string(kMaxTags) + " per resource)");
+                }
             }
-            Config::Get().SetValue(sPrefix + "." + sField + "tags", jsTags);
         }
+
+        for(const char* sFieldName : {"label", "description"})
+        {
+            if(!jsPatch.contains(sFieldName)) { continue; }
+            //null resets to the default - builders fall back on empty values
+            Config::Get().SetValue(sPrefix + "." + sField + sFieldName,
+                                   jsPatch[sFieldName].is_null() ? "" : jsPatch[sFieldName].get<std::string>());
+        }
+        if(jsPatch.contains("tags")) { Config::Get().SetValue(sPrefix + "." + sField + "tags", jsTags); }
         pNode->Touch(sId);      //new version for this resource - and only this one
         pNode->BumpVersion();   //wake the registration loop
         LOG_INFO("nmos") << "annotation patch on " << sKind << " - " << sBody.substr(0, 200);

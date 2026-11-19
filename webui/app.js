@@ -974,7 +974,8 @@ async function setStreamLabel(kind, s, label) {
             method: "PATCH", headers: {"Content-Type": "application/json"},
             body: JSON.stringify({label: value || null})
         });
-        if (!r.ok) throw new Error("annotation api");
+        //the node refused the value (too long, ...): that is an answer, not an outage
+        if (!r.ok) throw Object.assign(new Error("annotation patch rejected"), {rejected: true});
     };
     const withSuffix = suffix => label ? `${label} ${suffix}` : "";
     try {
@@ -984,6 +985,8 @@ async function setStreamLabel(kind, s, label) {
             if (s.flow_id) await patch(`flows/${s.flow_id}`, withSuffix("flow"));
         }
     } catch (e) {
+        if (e.rejected) return;     //keep the previous label, the tile shows it again
+        //annotation api unreachable from this browser: store through the config api
         const updates = {[`${kind.key}.${s.index}.label`]: label};
         if (kind.type === "sender") {
             updates[`${kind.key}.${s.index}.source_label`] = withSuffix("source");
@@ -1003,7 +1006,7 @@ function tileHtml(kind, s) {
         <div class="tile ${kind.type}" data-tile="${s.index}">
             <div class="tile-head">
                 <span class="tag ${kind.tag.toLowerCase()}">${kind.tag} ${s.index + 1}</span>
-                <input class="t-label" placeholder="Label" spellcheck="false">
+                <input class="t-label" placeholder="Label" spellcheck="false" maxlength="255">
                 <span class="t-state"><i class="led"></i><span class="t-state-text"></span></span>
             </div>
             <div class="t-fmt"></div>

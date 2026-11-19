@@ -137,6 +137,11 @@ servo is hardened against them, but bare metal remains clearly better.
   one never changes another. Unset labels fall back to fixed names
   ("AES67eleven sender 1"), they do not follow the device or sender label. New
   streams are named once when they are created.
+- IS-13 limits, sizes in bytes of UTF-8: label, description, tag name and tag
+  value up to 1024 each; 32 user tags per resource, 16 values per tag; request
+  body up to 1 MiB. Anything beyond is rejected with `500` and changes nothing.
+- BCP-002-02 tag names are versioned (`urn:x-nmos:tag:asset:…/v1.0`); node and
+  device carry manufacturer, product and instance-id, the device also function.
 - IS-13 test suite (garethsb `is-13-annotation-tests`): **0 fails**.
 
 ## Verification
