@@ -185,6 +185,13 @@ bool HalDevice::SetStringProperty(uint32_t nSelector, const std::string& sValue)
     return nStatus == kAudioHardwareNoError;
 }
 
+bool HalDevice::HasProperty(uint32_t nSelector)
+{
+    if(!IsOpen()) { return false; }
+    auto address = GlobalAddress(nSelector);
+    return AudioObjectHasProperty(m_nDevice, &address);
+}
+
 std::vector<uint8_t> HalDevice::GetDataProperty(uint32_t nSelector)
 {
     std::vector<uint8_t> vResult;

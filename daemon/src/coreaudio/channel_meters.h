@@ -29,6 +29,17 @@ namespace aes67vsc
                 }
             }
 
+            /** peaks measured elsewhere (the driver, for channels the daemon
+            *   does not fetch). no decay here - Feed() of the same block did it **/
+            void FeedPeaks(const float* pPeaks)
+            {
+                for(size_t nCh = 0; nCh < kChannels; nCh++)
+                {
+                    float fCurrent = m_afPeak[nCh].load(std::memory_order_relaxed);
+                    if(pPeaks[nCh] > fCurrent) { m_afPeak[nCh].store(pPeaks[nCh], std::memory_order_relaxed); }
+                }
+            }
+
             nlohmann::json Db() const
             {
                 nlohmann::json js = nlohmann::json::array();

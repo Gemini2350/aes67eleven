@@ -34,6 +34,7 @@ namespace aes67vsc
             bool IsOpen() const { return true; }
             bool Start(IOFunc, bool = false) { return true; }
             void Stop() {}
+            bool HasProperty(uint32_t) { return false; }
             std::vector<uint8_t> GetDataProperty(uint32_t) { return {}; }
             bool SetStringProperty(uint32_t, const std::string&) { return true; }
             std::string GetStringProperty(uint32_t) { return {}; }

@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <csignal>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <mutex>
@@ -13,6 +15,7 @@
 #include <unistd.h>
 #include "audio/sources.h"
 #include "bridge/rx_bridge.h"
+#include "bridge/shm_capture.h"
 #include "bridge/tx_bridge.h"
 #include "compat/net_compat.h"
 #include "compat/time_compat.h"
@@ -105,6 +108,26 @@ namespace
             for(size_t nCh = 0; nCh < nCount; nCh++) { vMap.push_back(uint32_t(nOffset + nCh)); }
         }
         return vMap;
+    }
+
+    /** a sender's tap, buffered for how its frames arrive on this platform **/
+    std::shared_ptr<TxTap> NewTxTap(std::vector<uint32_t> vMap)
+    {
+        auto pTap = std::make_shared<TxTap>(std::move(vMap));
+        if(kGatewayEngine)
+        {
+            //self paced on a realtime thread: a fixed scheduling cushion
+            pTap->SetMaxFill(size_t(Config::Get().GetValue<double>("gateway.buffer_ms", 30.0)*48.0) + 448);
+        }
+        else
+        {
+            //drained from coreaudiod every 2 ms, on a thread that waits for
+            //ipc: keep 3 ms in hand (the tap adds more by itself where a host
+            //needs it), never hold more than 50 ms
+            pTap->SetCushion(144);
+            pTap->SetMaxFill(2400);
+        }
+        return pTap;
     }
 
     /** non-owning adapter so a sender can "own" the shared device tap **/
@@ -345,11 +368,7 @@ int main(int argc, char** argv)
         auto jsReceivers = StreamArray("receivers");
         for(size_t n = 0; n < jsSenders.size() && n < kMaxStreams; n++)
         {
-            vTxTaps.push_back(std::make_shared<TxTap>(MapFromEntry(jsSenders[n], n)));
-            if(kGatewayEngine)
-            {
-                vTxTaps.back()->SetMaxFill(size_t(Config::Get().GetValue<double>("gateway.buffer_ms", 30.0)*48.0) + 448);
-            }
+            vTxTaps.push_back(NewTxTap(MapFromEntry(jsSenders[n], n)));
             vSenders.push_back(std::make_unique<rtp::RtpSender>(ptpClient));
         }
         for(size_t n = 0; n < jsReceivers.size() && n < kMaxStreams; n++)
@@ -446,6 +465,11 @@ int main(int argc, char** argv)
     };
     OpenDevices();
 
+    std::atomic<int> nCapturePath{0};           //0 legacy tap, 1 packed tap, 2 shared ring
+    std::atomic<uint64_t> nShmResyncs{0};
+    std::mutex captureDiagMutex;
+    std::string sCaptureDiag;                   //the driver's own view (guarded)
+
     //capture drain: pull what apps play on the main device out of the driver
     //via the capture tap property (a plain hal property read - not an input
     //stream, so macos never shows the microphone indicator for us)
@@ -462,8 +486,18 @@ int main(int argc, char** argv)
             Config::Get().GetValue<double>("gateway.buffer_ms", 30.0) * 48.0 : 0.0;
         double dBudget = dPrime;
         std::vector<float> vPlayerMix;
-        if(kGatewayEngine) { compat::SetRealtimeThread(8'000'000); }
+        compat::SetRealtimeThread(kGatewayEngine ? 8'000'000 : 2'000'000);
         uint64_t nNextNs = compat::HostNs();
+        //macos tap state
+        bool bPacked = false;           //driver offers the packed tap
+        uint64_t nSentMask = 0;         //channel selection the driver knows
+        auto tDriverCheck = std::chrono::steady_clock::time_point{};
+        size_t nIdleReads = 0;          //consecutive reads without frames
+        std::vector<float> vWide;       //packed frames spread back onto the 64ch bus
+        bool bFlushBacklog = true;      //drop what piled up in the driver while nobody read
+        size_t nFlushReads = 0;
+        ShmCapture shm;                 //the driver's shared capture ring (fast path)
+        uint64_t nShmSeen = 0;          //its write position at the last check
         while(!g_bStop)
         {
             if(kGatewayEngine)
@@ -476,24 +510,116 @@ int main(int argc, char** argv)
             }
             else
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(8));
+                //drain every 2 ms while apps play - the chunk size is path
+                //latency. absolute deadlines keep the read time out of the
+                //period; a late read is not caught up, polling faster would
+                //not bring frames sooner. idle, 10 ms keeps coreaudiod quiet
+                const uint64_t nPeriodNs = shm.IsOpen() ? (nIdleReads > 500 ? 5'000'000 : 1'000'000)
+                                                        : (nIdleReads > 100 ? 10'000'000 : 2'000'000);
+                nNextNs = std::max(nNextNs + nPeriodNs, compat::HostNs() + 500'000);
+                compat::SleepUntilHostNs(nNextNs);
             }
             auto tNow = std::chrono::steady_clock::now();
             dBudget += std::chrono::duration<double>(tNow - tLast).count() * kSampleRate;
             tLast = tNow;
-            if(!bDevicesUp) { dBudget = 0.0; continue; }
+            if(!bDevicesUp) { dBudget = 0.0; bFlushBacklog = true; nFlushReads = 0; continue; }
 
             bool bPlayers = std::any_of(playerDecks.begin(), playerDecks.end(),
                                         [](const PlayerDeck& deck) { return deck.Playing(); });
-            auto vBytes = mainDevice.GetDataProperty(kCaptureTapSelector);
-            size_t nFrames = vBytes.size() / (kChannels * sizeof(float));
+            std::vector<uint8_t> vBytes;
+            float* pFrames = nullptr;
+            size_t nFrames = 0;
+            CapturePackedHeader header{};
+            if(!kGatewayEngine)
+            {
+                //the driver can change underneath us (coreaudiod restart,
+                //update) - look once a second and repeat the selection then
+                uint64_t nMask = txFanout.ChannelMask();
+                bool bCheck = tNow - tDriverCheck >= std::chrono::seconds(1);
+                if(bCheck)
+                {
+                    tDriverCheck = tNow;
+                    bPacked = mainDevice.HasProperty(kCapturePackedSelector);
+                    std::string sDiag = mainDevice.HasProperty(kCaptureDiagSelector) ?
+                                        mainDevice.GetStringProperty(kCaptureDiagSelector) : "";
+                    bool bOffered = sDiag.rfind("kind=shm", 0) == 0 || sDiag.rfind("kind=file", 0) == 0;
+                    //(re)map when the ring is new to us or stands still - after
+                    //a coreaudiod restart the driver may have created a new one
+                    if(!bOffered) { shm.Close(); }
+                    else if(!shm.IsOpen() || shm.Written() == nShmSeen) { shm.Open(); }
+                    nShmSeen = shm.Written();
+                    txFanout.SetCushion(shm.IsOpen() ? 96 : 144);
+                    nCapturePath = shm.IsOpen() ? 2 : bPacked ? 1 : 0;
+                    nShmResyncs = shm.Resyncs();
+                    std::lock_guard<std::mutex> lg(captureDiagMutex);
+                    sCaptureDiag = sDiag;
+                }
+                if(!shm.IsOpen() && bPacked && (bCheck || nMask != nSentMask))
+                {
+                    char sMask[32];
+                    snprintf(sMask, sizeof(sMask), "%llx", static_cast<unsigned long long>(nMask));
+                    mainDevice.SetStringProperty(kCaptureMaskSelector, sMask);
+                    nSentMask = nMask;
+                }
+            }
+            if(shm.IsOpen())
+            {
+                nFrames = shm.Read(vWide);
+                pFrames = vWide.data();
+            }
+            else if(bPacked)
+            {
+                vBytes = mainDevice.GetDataProperty(kCapturePackedSelector);
+                if(vBytes.size() >= sizeof(header))
+                {
+                    memcpy(&header, vBytes.data(), sizeof(header));
+                    if(header.nMagic == kCapturePackedMagic && header.nChannels <= kChannels &&
+                       vBytes.size() == sizeof(header) + size_t(header.nFrames) * header.nChannels * sizeof(float))
+                    {
+                        nFrames = header.nFrames;
+                        vWide.assign(nFrames * kChannels, 0.0f);
+                        const uint8_t* pSrc = vBytes.data() + sizeof(header);
+                        for(size_t nFrame = 0; nFrame < nFrames; nFrame++)
+                        {
+                            float* pDst = vWide.data() + nFrame*kChannels;
+                            for(uint32_t n = 0; n < header.nChannels; n++, pSrc += sizeof(float))
+                            {
+                                memcpy(pDst + std::min<uint32_t>(header.aChannel[n], kChannels-1), pSrc, sizeof(float));
+                            }
+                        }
+                        pFrames = vWide.data();
+                    }
+                }
+            }
+            else
+            {
+                //older driver: all 64 channels per read
+                vBytes = mainDevice.GetDataProperty(kCaptureTapSelector);
+                nFrames = vBytes.size() / (kChannels * sizeof(float));
+                pFrames = reinterpret_cast<float*>(vBytes.data());
+            }
+            if(bFlushBacklog && nFrames > 0)
+            {
+                //the driver keeps up to 1.4 s while no daemon drains it. that
+                //is old audio - sending it would only sit in the tap as delay
+                //(at most 16 full reads; the shared ring starts at "now" anyway)
+                if(shm.IsOpen() || ++nFlushReads > 20) { bFlushBacklog = false; }
+                else { nFrames = 0; }
+            }
+            else if(bFlushBacklog)
+            {
+                bFlushBacklog = false;      //drained
+            }
+            nIdleReads = nFrames > 0 ? 0 : nIdleReads + 1;
             if(nFrames > 0)
             {
                 dBudget = std::clamp(dBudget - double(nFrames), -4096.0, 4096.0);
-                auto* pFrames = reinterpret_cast<float*>(vBytes.data());
                 for(auto& deck : playerDecks) { deck.Mix(pFrames, nFrames); }
                 txFanout.Push(pFrames, nFrames);
                 outMeters.Feed(pFrames, nFrames);
+                //channels no sender picks up were not fetched - the driver
+                //measured them
+                if(!shm.IsOpen() && bPacked) { outMeters.FeedPeaks(header.afPeak); }
             }
             else if((bPlayers || kGatewayEngine) && dBudget >= 384.0)
             {
@@ -685,10 +811,20 @@ int main(int argc, char** argv)
             {"tx_fill_frames", vTxTaps.empty() ? 0 : vTxTaps[0]->FillFrames()},
             {"tx_underruns", vTxTaps.empty() ? 0 : vTxTaps[0]->Underruns()},
             {"tx_trimmed", vTxTaps.empty() ? 0 : vTxTaps[0]->Trimmed()},
+            {"tx_primed", vTxTaps.empty() ? 0 : vTxTaps[0]->Primed()},
             {"rx_fill_frames", vRxTaps.empty() ? 0 : vRxTaps[0]->DelayFrames()},
             {"rx_underruns", vRxTaps.empty() ? 0 : vRxTaps[0]->Underruns()},
             {"clock", bridge.GetStringProperty(kClockSyncSelector)}
         };
+        //how the audio apps play reaches us (see the capture drain)
+        const int nPath = nCapturePath.load();
+        js["device"]["tx_pushed"] = vTxTaps.empty() ? uint64_t(0) : vTxTaps[0]->Pushed();
+        js["device"]["capture_path"] = std::string(nPath == 2 ? "shared ring" : nPath == 1 ? "packed tap" : "tap");
+        js["device"]["capture_resyncs"] = nShmResyncs.load();
+        {
+            std::lock_guard<std::mutex> lg(captureDiagMutex);
+            js["device"]["capture_driver"] = sCaptureDiag;
+        }
         js["monitor"] = monitor.GetStatusJson();
         if(auto* pIs12 = node.GetIs12()) { js["monitors"] = pIs12->GetMonitorJson(); }
         return js;
@@ -831,11 +967,7 @@ int main(int argc, char** argv)
                 if(sType == "sender" && nIndex < vSenders.size())
                 {
                     vSenders[nIndex]->Stop();               //stop reader before the tap swap
-                    vTxTaps[nIndex] = std::make_shared<TxTap>(vMap);
-                    if(kGatewayEngine)
-                    {
-                        vTxTaps[nIndex]->SetMaxFill(size_t(Config::Get().GetValue<double>("gateway.buffer_ms", 30.0)*48.0) + 448);
-                    }
+                    vTxTaps[nIndex] = NewTxTap(vMap);
                     txFanout.SetTaps(vTxTaps);
                     ApplySender(nIndex, *vSenders[nIndex], vTxTaps[nIndex].get(), sFilesDir);
                 }

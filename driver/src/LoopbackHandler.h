@@ -1,8 +1,15 @@
 #pragma once
 #include <aspl/IORequestHandler.hpp>
 #include <atomic>
+#include <cerrno>
 #include <cstring>
+#include <fcntl.h>
+#include <mach/mach_time.h>
 #include <memory>
+#include <mutex>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 #include "driver_iface.h"
 
@@ -125,6 +132,8 @@ namespace aes67vsc
             }
 
             uint64_t Overruns() const { return m_nOverruns.load(std::memory_order_relaxed); }
+            uint64_t Written() const { return m_nWritten.load(std::memory_order_relaxed); }
+            uint64_t Read() const { return m_nRead.load(std::memory_order_relaxed); }
 
         private:
             std::vector<float> m_vData;
@@ -133,12 +142,108 @@ namespace aes67vsc
             std::atomic<uint64_t> m_nOverruns{0};
     };
 
+    /** Writer side of the shared capture ring (see driver_iface.h). Mapped
+    *   once when the driver loads; where the sandbox refuses both variants
+    *   the ring stays unmapped and Write() is a no-op. **/
+    class CaptureShm
+    {
+        public:
+            CaptureShm()
+            {
+                int nFd = shm_open(kCaptureShmName, O_RDWR | O_CREAT, 0644);
+                if(nFd >= 0 && !Map(nFd, true))
+                {
+                    //an object of another size (older layout) cannot be resized
+                    m_nShmErrno = errno;
+                    shm_unlink(kCaptureShmName);
+                    nFd = shm_open(kCaptureShmName, O_RDWR | O_CREAT | O_EXCL, 0644);
+                    if(nFd >= 0 && Map(nFd, true)) { m_nShmErrno = 0; }
+                }
+                else if(nFd < 0)
+                {
+                    m_nShmErrno = errno;
+                }
+                if(m_pHeader) { m_sKind = "shm"; return; }
+
+                nFd = open(kCaptureShmFile, O_RDWR | O_CREAT | O_NOFOLLOW, 0644);
+                if(nFd < 0 || !Map(nFd, false)) { m_nFileErrno = errno; return; }
+                m_sKind = "file";
+            }
+
+            //io thread: no locks, no allocation, the pages are prefaulted
+            void Write(const float* pInterleaved, size_t nFrames)
+            {
+                if(!m_pHeader) { return; }
+                uint64_t nWrite = m_pHeader->nWritten.load(std::memory_order_relaxed);
+                for(size_t nDone = 0; nDone < nFrames;)
+                {
+                    size_t nIndex = size_t((nWrite + nDone) % kCaptureShmFrames);
+                    size_t nChunk = std::min(nFrames - nDone, size_t(kCaptureShmFrames) - nIndex);
+                    memcpy(m_pData + nIndex*kChannels, pInterleaved + nDone*kChannels,
+                           nChunk * kChannels * sizeof(float));
+                    nDone += nChunk;
+                }
+                m_pHeader->nWritten.store(nWrite + nFrames, std::memory_order_release);
+            }
+
+            const char* Kind() const { return m_sKind; }
+            int ShmErrno() const { return m_nShmErrno; }
+            int FileErrno() const { return m_nFileErrno; }
+
+        private:
+            bool Map(int nFd, bool bShm)
+            {
+                struct stat st{};
+                if(fstat(nFd, &st) != 0) { close(nFd); return false; }
+                if(size_t(st.st_size) != kCaptureShmBytes)
+                {
+                    //posix shm on macos can be sized exactly once
+                    if((bShm && st.st_size != 0) || ftruncate(nFd, off_t(kCaptureShmBytes)) != 0)
+                    {
+                        int nError = errno ? errno : EINVAL;
+                        close(nFd);
+                        errno = nError;
+                        return false;
+                    }
+                }
+                fchmod(nFd, 0644);      //the daemon runs as the user and only reads
+                void* p = mmap(nullptr, kCaptureShmBytes, PROT_READ | PROT_WRITE, MAP_SHARED, nFd, 0);
+                int nError = errno;
+                close(nFd);
+                if(p == MAP_FAILED) { errno = nError; return false; }
+                memset(p, 0, kCaptureShmBytes);
+                mlock(p, kCaptureShmBytes);
+                auto* pHeader = static_cast<CaptureShmHeader*>(p);
+                pHeader->nChannels = kChannels;
+                pHeader->nFrames = kCaptureShmFrames;
+                pHeader->nWritten.store(0);
+                pHeader->nEpoch.store(mach_absolute_time());
+                pHeader->nMagic = kCaptureShmMagic;
+                m_pData = reinterpret_cast<float*>(static_cast<uint8_t*>(p) + kCaptureShmDataOffset);
+                m_pHeader = pHeader;
+                return true;
+            }
+
+            CaptureShmHeader* m_pHeader = nullptr;
+            float* m_pData = nullptr;
+            const char* m_sKind = "none";
+            int m_nShmErrno = 0;
+            int m_nFileErrno = 0;
+    };
+
     /** the two cross-wired paths between the visible device and the bridge **/
     struct SharedRings
     {
         TimelineRing txRing;    //apps play on "AES67" -> daemon captures on bridge
         TimelineRing rxRing;    //daemon renders on bridge -> apps record on "AES67"
         CaptureFifo txCapture;  //apps play on "AES67" -> daemon drains via property (no mic io)
+        std::atomic<uint64_t> nCaptureMask{~0ull};  //channels the packed tap delivers
+        CaptureShm txShm;       //the same audio, mapped by the daemon (fast path)
+        //tap property getters: scratch buffers, one reader at a time
+        std::mutex tapMutex;
+        std::vector<float> vTapChunk = std::vector<float>(size_t(kCaptureChunkFrames) * kChannels);
+        std::vector<uint8_t> vTapOut;
+        std::atomic<uint64_t> nTapCalls{0}, nTapFrames{0};
         //diagnostics: io dispatch counters per role
         std::atomic<uint64_t> nMainReads{0}, nMainWrites{0}, nBridgeReads{0}, nBridgeWrites{0};
     };
@@ -164,6 +269,7 @@ namespace aes67vsc
                 if(!m_bIsBridge)
                 {
                     m_pRings->txCapture.Push(static_cast<const float*>(pBytes), size_t(nFrames));
+                    m_pRings->txShm.Write(static_cast<const float*>(pBytes), size_t(nFrames));
                 }
             }
 

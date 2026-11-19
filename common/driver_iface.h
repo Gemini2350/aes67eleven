@@ -1,4 +1,6 @@
 #pragma once
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 
 /** Shared contract between the HAL driver and the daemon. **/
@@ -39,4 +41,56 @@ namespace aes67vsc
     constexpr uint32_t kCaptureTapSelector = 0x63617054;    //'capT'
     constexpr uint32_t kCaptureChunkFrames = 4096;
     constexpr uint32_t kCaptureRingFrames = 65536;          //~1.4 s at 48k
+
+    /** packed capture tap (CFData) on the main device: the same frames as the
+    *   capture tap, but only the channels the daemon asked for. A read with
+    *   all 64 channels carries ~100 kB and takes several ms through
+    *   coreaudiod; two channels take a fraction of a ms, so the daemon can
+    *   drain every 2 ms and keep the path short. Layout: CapturePackedHeader,
+    *   then nFrames * nChannels interleaved floats. Empty data = nothing new.
+    *   The header carries the peak of all 64 device channels, so the meters
+    *   also show channels no sender picks up. **/
+    constexpr uint32_t kCapturePackedSelector = 0x63617050; //'capP'
+    constexpr uint32_t kCapturePackedMagic = 0x31504143;    //"CAP1"
+    struct CapturePackedHeader
+    {
+        uint32_t nMagic;
+        uint32_t nFrames;
+        uint32_t nChannels;             //channels per packed frame
+        uint8_t aChannel[kChannels];    //device channel of packed channel i
+        float afPeak[kChannels];        //peak per device channel over nFrames
+    };
+
+    /** channel selection for the packed tap (CFString, hex bit mask, bit n =
+    *   device channel n), set by the daemon whenever its senders change **/
+    constexpr uint32_t kCaptureMaskSelector = 0x6361704D;   //'capM'
+
+    /** shared capture ring: the driver's io thread writes what apps play on
+    *   "AES67eleven" straight into memory the daemon maps read-only - all 64
+    *   channels, no ipc per block. This is the fast path; the tap properties
+    *   above stay as fallback where the driver's sandbox refuses the mapping.
+    *   Layout: CaptureShmHeader, audio from kCaptureShmDataOffset on as
+    *   kCaptureShmFrames * kChannels interleaved floats. Frame n lives in
+    *   slot n % kCaptureShmFrames; nWritten is the number of frames written
+    *   since nEpoch (which changes whenever the driver starts over). **/
+    constexpr const char* kCaptureShmName = "/aes67eleven.tx1";             //posix shm
+    constexpr const char* kCaptureShmFile = "/tmp/aes67eleven-tx1.ring";    //mapped file, 2nd choice
+    constexpr uint32_t kCaptureShmMagic = 0x31524854;       //"THR1"
+    constexpr uint32_t kCaptureShmFrames = 16384;           //~341 ms at 48k
+    constexpr size_t kCaptureShmDataOffset = 16384;
+    constexpr size_t kCaptureShmBytes = kCaptureShmDataOffset + size_t(kCaptureShmFrames) * kChannels * sizeof(float);
+    struct CaptureShmHeader
+    {
+        uint32_t nMagic;
+        uint32_t nChannels;
+        uint32_t nFrames;
+        uint32_t nReserved;
+        std::atomic<uint64_t> nWritten;
+        std::atomic<uint64_t> nEpoch;
+    };
+
+    /** capture diagnostics (CFString) on the main device, e.g.
+    *   "kind=shm shm_errno=0 file_errno=0 fifo_written=.. fifo_read=.. ..."
+    *   kind = shm | file | none tells the daemon which path the driver offers **/
+    constexpr uint32_t kCaptureDiagSelector = 0x63617053;   //'capS'
 }

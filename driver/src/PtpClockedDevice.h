@@ -58,6 +58,10 @@ namespace aes67vsc
             CFStringRef GetClockSyncProperty() const;
             void SetClockSyncProperty(CFStringRef value);
             CFPropertyListRef GetCaptureTap() const;
+            CFPropertyListRef GetCapturePacked() const;
+            CFStringRef GetCaptureDiag() const;
+            CFStringRef GetCaptureMask() const;
+            void SetCaptureMask(CFStringRef value);
 
             std::shared_ptr<DriverClock> m_pClock;
             std::shared_ptr<SharedRings> m_pRings;

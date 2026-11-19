@@ -1,6 +1,9 @@
 #include "PtpClockedDevice.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 #include <mach/mach_time.h>
 
 using namespace aes67vsc;
@@ -27,14 +30,98 @@ PtpClockedDevice::PtpClockedDevice(const std::shared_ptr<const aspl::Context>& c
                            &PtpClockedDevice::GetClockSyncProperty,
                            &PtpClockedDevice::SetClockSyncProperty);
     RegisterCustomProperty(kCaptureTapSelector, *this, &PtpClockedDevice::GetCaptureTap);
+    RegisterCustomProperty(kCapturePackedSelector, *this, &PtpClockedDevice::GetCapturePacked);
+    RegisterCustomProperty(kCaptureDiagSelector, *this, &PtpClockedDevice::GetCaptureDiag);
+    RegisterCustomProperty(kCaptureMaskSelector, *this,
+                           &PtpClockedDevice::GetCaptureMask,
+                           &PtpClockedDevice::SetCaptureMask);
+}
+
+CFPropertyListRef PtpClockedDevice::GetCapturePacked() const
+{
+    if(!m_pRings) { return CFDataCreate(kCFAllocatorDefault, nullptr, 0); }
+    std::lock_guard<std::mutex> lg(m_pRings->tapMutex);
+    auto& vChunk = m_pRings->vTapChunk;
+    auto& vOut = m_pRings->vTapOut;
+    size_t nFrames = m_pRings->txCapture.Pop(vChunk.data(), kCaptureChunkFrames);
+    m_pRings->nTapCalls++;
+    m_pRings->nTapFrames += nFrames;
+    if(nFrames == 0)
+    {
+        return CFDataCreate(kCFAllocatorDefault, nullptr, 0);
+    }
+
+    CapturePackedHeader header{};
+    header.nMagic = kCapturePackedMagic;
+    header.nFrames = uint32_t(nFrames);
+    const uint64_t nMask = m_pRings->nCaptureMask.load(std::memory_order_relaxed);
+    for(uint32_t nCh = 0; nCh < kChannels; nCh++)
+    {
+        if(nMask & (1ull << nCh)) { header.aChannel[header.nChannels++] = uint8_t(nCh); }
+        float fPeak = 0.f;
+        for(size_t nFrame = 0; nFrame < nFrames; nFrame++)
+        {
+            fPeak = std::max(fPeak, std::fabs(vChunk[nFrame*kChannels + nCh]));
+        }
+        header.afPeak[nCh] = fPeak;
+    }
+
+    vOut.resize(sizeof(header) + nFrames * header.nChannels * sizeof(float));
+    memcpy(vOut.data(), &header, sizeof(header));
+    auto* pDst = reinterpret_cast<float*>(vOut.data() + sizeof(header));
+    for(size_t nFrame = 0; nFrame < nFrames; nFrame++)
+    {
+        const float* pSrc = vChunk.data() + nFrame*kChannels;
+        for(uint32_t n = 0; n < header.nChannels; n++) { *pDst++ = pSrc[header.aChannel[n]]; }
+    }
+    return CFDataCreate(kCFAllocatorDefault, vOut.data(), CFIndex(vOut.size()));
+}
+
+CFStringRef PtpClockedDevice::GetCaptureDiag() const
+{
+    char buffer[256] = "kind=none";
+    if(m_pRings)
+    {
+        snprintf(buffer, sizeof(buffer),
+                 "kind=%s shm_errno=%d file_errno=%d fifo_written=%llu fifo_read=%llu fifo_overruns=%llu tap_calls=%llu tap_frames=%llu",
+                 m_pRings->txShm.Kind(), m_pRings->txShm.ShmErrno(), m_pRings->txShm.FileErrno(),
+                 (unsigned long long)m_pRings->txCapture.Written(),
+                 (unsigned long long)m_pRings->txCapture.Read(),
+                 (unsigned long long)m_pRings->txCapture.Overruns(),
+                 (unsigned long long)m_pRings->nTapCalls.load(),
+                 (unsigned long long)m_pRings->nTapFrames.load());
+    }
+    return CFStringCreateWithCString(kCFAllocatorDefault, buffer, kCFStringEncodingUTF8);
+}
+
+CFStringRef PtpClockedDevice::GetCaptureMask() const
+{
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%llx",
+             static_cast<unsigned long long>(m_pRings ? m_pRings->nCaptureMask.load() : 0));
+    return CFStringCreateWithCString(kCFAllocatorDefault, buffer, kCFStringEncodingUTF8);
+}
+
+void PtpClockedDevice::SetCaptureMask(CFStringRef value)
+{
+    if(!value || !m_pRings) { return; }
+    char buffer[32] = {0};
+    if(!CFStringGetCString(value, buffer, sizeof(buffer), kCFStringEncodingUTF8)) { return; }
+    unsigned long long nMask = 0;
+    if(sscanf(buffer, "%llx", &nMask) != 1) { return; }
+    m_pRings->nCaptureMask.store(nMask);
 }
 
 CFPropertyListRef PtpClockedDevice::GetCaptureTap() const
 {
     //drain up to one chunk of what apps played on the main device. returned
     //as CFData of interleaved float frames; empty data = nothing new.
-    static thread_local std::vector<float> vChunk(size_t(kCaptureChunkFrames) * kChannels);
-    size_t nFrames = m_pRings ? m_pRings->txCapture.Pop(vChunk.data(), kCaptureChunkFrames) : 0;
+    if(!m_pRings) { return CFDataCreate(kCFAllocatorDefault, nullptr, 0); }
+    std::lock_guard<std::mutex> lg(m_pRings->tapMutex);
+    auto& vChunk = m_pRings->vTapChunk;
+    size_t nFrames = m_pRings->txCapture.Pop(vChunk.data(), kCaptureChunkFrames);
+    m_pRings->nTapCalls++;
+    m_pRings->nTapFrames += nFrames;
     return CFDataCreate(kCFAllocatorDefault, reinterpret_cast<const UInt8*>(vChunk.data()),
                         CFIndex(nFrames * kChannels * sizeof(float)));
 }

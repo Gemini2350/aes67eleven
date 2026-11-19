@@ -25,6 +25,15 @@ Network ─▶ RTP receiver ─jitter buffer─▶ daemon ─▶ [AES67 In] ─l
   1:1 on the media clock. Without daemon/lock: holdover at the last known rate.
 - **`aes67vsc-daemon`** (LaunchAgent, no root): PTP slave (slave-only, BMCA, E2E),
   RTP TX/RX (L24/L16, 1 ms ptime, ST 2022-7 legs), NMOS node, web UI.
+- **TX capture path**: the driver's IO thread writes all 64 output channels into a
+  lock-free ring in POSIX shared memory (`/aes67eleven.tx1`, 16384 frames); the
+  daemon maps it read-only and drains it every 1 ms into the per-sender rings. No
+  IPC per block, so the app's buffer size and the channel count do not matter. Each
+  sender ring keeps a 2 ms cushion against scheduling jitter and gives surplus
+  latency back after 20 s without need. If the mapping is refused, the daemon
+  falls back to draining through a custom property (`'capP'`, only the channels
+  in use; `'capT'` on older drivers). `device.capture_path` and
+  `device.capture_driver` in `/api/status` show which path is active and why.
 
 ## Installer package (maintainers)
 

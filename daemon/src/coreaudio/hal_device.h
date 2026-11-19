@@ -29,6 +29,9 @@ namespace aes67vsc
             bool Start(IOFunc pIO, bool bOutputOnly = false);
             void Stop();
 
+            /** does the driver implement this (custom) property? **/
+            bool HasProperty(uint32_t nSelector);
+
             /** custom property carrying raw bytes (CFData) **/
             std::vector<uint8_t> GetDataProperty(uint32_t nSelector);
 
